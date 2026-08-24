@@ -46,12 +46,27 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
 
   const applyTemplate = (newType: EntityType) => {
     setType(newType);
+    // Smart icon sync: if current icon is still the previous type's default
+    // (or an image that happens to match — unlikely), swap to new type's default.
+    // If the user has customized the icon, leave it alone.
+    const prevDefault = ENTITY_TYPE_META[type]?.icon;
+    const newDefault = ENTITY_TYPE_META[newType]?.icon;
+    if (icon === prevDefault && newDefault) {
+      setIcon(newDefault);
+      setIconMode('emoji');
+    }
     if (!isEditing || fields.length === 0) {
       const template = FIELD_TEMPLATES[newType];
       if (template.length > 0) {
         setFields(template.map((t) => ({ key: t.key, label: t.label, value: '' })));
       }
     }
+  };
+
+  const resetIconToTypeDefault = () => {
+    const def = ENTITY_TYPE_META[type]?.icon || '📌';
+    setIcon(def);
+    setIconMode('emoji');
   };
 
   const updateField = (i: number, key: keyof EntityField, value: string) => {
@@ -129,7 +144,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
               <div className="flex mt-1 text-[10px]">
                 <button
                   type="button"
-                  onClick={() => { setIconMode('emoji'); if (isImageIcon(icon)) setIcon('📌'); }}
+                  onClick={() => { setIconMode('emoji'); if (isImageIcon(icon)) setIcon(ENTITY_TYPE_META[type]?.icon || '📌'); }}
                   className={`flex-1 py-0.5 rounded-l ${iconMode === 'emoji' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                   {t('iconEmoji')}
@@ -142,6 +157,17 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
                   {t('iconImage')}
                 </button>
               </div>
+              {/* Reset to type default — only show when icon differs from type default */}
+              {icon !== ENTITY_TYPE_META[type]?.icon && (
+                <button
+                  type="button"
+                  onClick={resetIconToTypeDefault}
+                  className="mt-1 w-full text-[10px] text-slate-500 hover:text-indigo-400 transition-colors"
+                  title={t('iconResetTitle')}
+                >
+                  ↺ {t('iconReset')}
+                </button>
+              )}
             </div>
 
             {/* Image URL / upload (only in image mode) */}
