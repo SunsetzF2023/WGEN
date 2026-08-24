@@ -11,9 +11,10 @@ interface EntityDetailProps {
   onClose: () => void;
   onEdit: () => void;
   isLoggedIn: boolean;
+  onTagClick?: (tag: string) => void;
 }
 
-export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn }: EntityDetailProps) {
+export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn, onTagClick }: EntityDetailProps) {
   const { t } = useI18n();
 
   // Backlinks: entities that link TO this entity
@@ -128,9 +129,13 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
             <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">{t('tags')}</h3>
             <div className="flex flex-wrap gap-1.5">
               {entity.tags.map((tag, i) => (
-                <span key={i} className="text-xs px-2 py-1 rounded bg-slate-800 text-slate-400">
-                  #{tag}
-                </span>
+                <button
+                  key={i}
+                  onClick={() => onTagClick?.(tag)}
+                  className={`text-xs px-2 py-1 rounded bg-slate-800 text-slate-400 ${onTagClick ? 'hover:bg-slate-700 hover:text-slate-200 cursor-pointer transition-colors' : 'cursor-default'}`}
+                >
+                  {tag}
+                </button>
               ))}
             </div>
           </div>

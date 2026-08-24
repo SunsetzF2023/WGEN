@@ -73,7 +73,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
       description,
       imageUrl: imageUrl || undefined,
       audioUrl: audioUrl || undefined,
-      tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      tags: tags.split(/[,，;；]/).map((tag) => tag.trim()).filter(Boolean),
       fields: fields.filter((f) => f.value.trim() || f.linkedEntityId),
       relationIds,
       owner_id: entity?.owner_id || '',

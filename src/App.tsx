@@ -353,6 +353,7 @@ export default function App() {
             onClose={() => setSelectedId(null)}
             onEdit={handleEditEntity}
             isLoggedIn={authState === 'logged_in'}
+            onTagClick={(tag) => setSearchQuery(tag)}
           />
         )}
 
