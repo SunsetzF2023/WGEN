@@ -22,6 +22,8 @@ export interface Entity {
   id: string;
   name: string;
   type: EntityType;
+  /** Custom type label when type === 'custom' */
+  customTypeLabel?: string;
   icon: string; // emoji
   summary: string;
   description: string;

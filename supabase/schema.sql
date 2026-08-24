@@ -5,6 +5,7 @@ create table if not exists entities (
   owner_id uuid references auth.users(id) on delete cascade,
   name text not null,
   type text not null default 'custom',
+  custom_type_label text,
   icon text default '📌',
   summary text default '',
   description text default '',

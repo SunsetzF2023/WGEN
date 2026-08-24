@@ -51,7 +51,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
                 className="inline-block text-xs px-2 py-0.5 rounded-full mt-1"
                 style={{ backgroundColor: meta.color + '22', color: meta.color }}
               >
-                {meta.icon} {meta.label}
+                {meta.icon} {entity.customTypeLabel || meta.label}
               </span>
             </div>
           </div>

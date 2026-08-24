@@ -25,6 +25,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
   const [fields, setFields] = useState<EntityField[]>(entity?.fields || []);
   const [relationIds, setRelationIds] = useState<string[]>(entity?.relationIds || []);
   const [mdPreview, setMdPreview] = useState(false);
+  const [customTypeLabel, setCustomTypeLabel] = useState(entity?.customTypeLabel || '');
 
   const applyTemplate = (newType: EntityType) => {
     setType(newType);
@@ -64,6 +65,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
       id: entity?.id || crypto.randomUUID(),
       name: name.trim(),
       type,
+      customTypeLabel: type === 'custom' ? customTypeLabel.trim() : undefined,
       icon,
       summary,
       description,
@@ -125,6 +127,19 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
               ))}
             </div>
           </div>
+
+          {/* Custom type label input */}
+          {type === 'custom' && (
+            <div>
+              <label className="text-xs text-slate-500 block mb-1">自定义类型名称</label>
+              <input
+                value={customTypeLabel}
+                onChange={(e) => setCustomTypeLabel(e.target.value)}
+                placeholder="如：概念、种族、职业、规则…"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
+              />
+            </div>
+          )}
 
           {/* Summary */}
           <div>
