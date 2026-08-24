@@ -28,6 +28,8 @@ const DRAG_TOLERANCE = 3;
 export function GraphView({ entities, selectedId, onSelect, onPositionChange }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeSelRef = useRef<d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown> | null>(null);
+  const nodesRef = useRef<GraphNode[]>([]);
+  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
   const entitiesRef = useRef(entities);
   const selectedIdRef = useRef(selectedId);
   const onSelectRef = useRef(onSelect);
@@ -43,6 +45,12 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
   /** Only a structural change (nodes, edges, labels) requires rebuilding the graph */
   const structureKey = useMemo(
     () => entities.map((e) => `${e.id}|${e.name}|${e.type}|${e.icon}|${e.relationIds.join(',')}`).join('\n'),
+    [entities]
+  );
+
+  /** Pinned positions are applied to the running simulation instead of rebuilding it */
+  const positionKey = useMemo(
+    () => entities.map((e) => `${e.id}|${e.position ? `${e.position.x},${e.position.y}` : ''}`).join('\n'),
     [entities]
   );
 
@@ -130,6 +138,7 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
         })
       );
     nodeSelRef.current = node;
+    nodesRef.current = nodes;
 
     // Node circle
     node.append('circle')
@@ -173,11 +182,34 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
         node.attr('transform', (d) => `translate(${d.x},${d.y})`);
       });
 
+    simulationRef.current = simulation;
+
     return () => {
       simulation.stop();
       nodeSelRef.current = null;
+      nodesRef.current = [];
+      simulationRef.current = null;
     };
   }, [structureKey]);
+
+  // Pin/unpin nodes when saved positions change (e.g. "reset layout" clears them)
+  useEffect(() => {
+    const simulation = simulationRef.current;
+    if (!simulation) return;
+    const positions = new Map(entitiesRef.current.map((e) => [e.id, e.position]));
+    let changed = false;
+    nodesRef.current.forEach((n) => {
+      const p = positions.get(n.id);
+      const fx = p ? p.x : null;
+      const fy = p ? p.y : null;
+      if ((n.fx ?? null) !== fx || (n.fy ?? null) !== fy) {
+        n.fx = fx;
+        n.fy = fy;
+        changed = true;
+      }
+    });
+    if (changed) simulation.alpha(0.6).restart();
+  }, [positionKey]);
 
   // Highlight the selected node without rebuilding the graph
   useEffect(() => {
