@@ -293,15 +293,27 @@ export default function App() {
           {t('all')} ({entities.length})
         </button>
         {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((tp) => {
-          const count = entities.filter((e) => e.type === tp).length;
+          const entitiesOfType = entities.filter((e) => e.type === tp);
+          const count = entitiesOfType.length;
           if (count === 0) return null;
+          // For custom type, show the user-defined label when all custom
+          // entities share the same one; otherwise fall back to "自定义 (N种)"
+          let label = getTypeLabel(tp, t);
+          if (tp === 'custom') {
+            const customLabels = [...new Set(entitiesOfType.map((e) => e.customTypeLabel).filter(Boolean))];
+            if (customLabels.length === 1) {
+              label = customLabels[0]!;
+            } else if (customLabels.length > 1) {
+              label = `${getTypeLabel(tp, t)} (${customLabels.length})`;
+            }
+          }
           return (
             <button
               key={tp}
               onClick={() => setFilterType(tp)}
               className={`text-xs px-2.5 py-1 rounded-lg ${filterType === tp ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              {ENTITY_TYPE_META[tp].icon} {getTypeLabel(tp, t)} ({count})
+              {ENTITY_TYPE_META[tp].icon} {label} ({count})
             </button>
           );
         })}
