@@ -32,6 +32,8 @@ export default function App() {
       } else {
         setAuthState('logged_out');
       }
+    }).catch(() => {
+      setAuthState('logged_out');
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
@@ -55,6 +57,9 @@ export default function App() {
           setShowSeedPrompt(true);
         }
         setEntities(cloud);
+      }).catch(() => {
+        setShowSeedPrompt(true);
+        setEntities([]);
       });
     } else if (authState === 'logged_out') {
       const local = loadLocalEntities();
