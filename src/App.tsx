@@ -206,11 +206,9 @@ export default function App() {
           setSidebarOpen(false);
         }}
         onClearData={() => {
-          if (confirm(t('confirmClear'))) {
-            setEntities([]);
-            setSelectedId(null);
-            setSidebarOpen(false);
-          }
+          setEntities([]);
+          setSelectedId(null);
+          setSidebarOpen(false);
         }}
       />
 

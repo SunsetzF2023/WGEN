@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useI18n, LANGUAGES, type Language } from '../lib/i18n';
 import type { Entity } from '../types';
 
@@ -11,8 +12,21 @@ interface SidebarProps {
 
 export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }: SidebarProps) {
   const { lang, setLang, t } = useI18n();
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearInput, setClearInput] = useState('');
 
   const relationCount = entities.reduce((sum, e) => sum + e.relationIds.length, 0);
+  const clearWord = t('confirmWord');
+  const clearArmed = clearInput.trim() === clearWord;
+
+  /** Never leave a destructive action armed after the sidebar closes */
+  const closeSidebar = () => {
+    setConfirmingReset(false);
+    setConfirmingClear(false);
+    setClearInput('');
+    onToggle();
+  };
 
   return (
     <>
@@ -20,7 +34,7 @@ export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }
       {open && (
         <div
           className="fixed inset-0 bg-black/50 z-40"
-          onClick={onToggle}
+          onClick={closeSidebar}
         />
       )}
 
@@ -37,7 +51,7 @@ export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }
             <span className="text-sm font-semibold text-slate-200">WorldForge</span>
           </div>
           <button
-            onClick={onToggle}
+            onClick={closeSidebar}
             className="text-slate-400 hover:text-slate-200 text-xl leading-none"
           >
             ✕
@@ -94,19 +108,92 @@ export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }
             <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
               ⚙️ {t('settings')}
             </h3>
-            <div className="space-y-1.5">
-              <button
-                onClick={onResetLayout}
-                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
-              >
-                🔄 {t('resetLayout')}
-              </button>
-              <button
-                onClick={onClearData}
-                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-red-900/30 text-slate-300 hover:text-red-300 transition-colors"
-              >
-                🗑️ {t('clearData')}
-              </button>
+            <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3 space-y-3">
+              <p className="text-xs text-red-400/80 font-semibold">⚠️ {t('dangerZone')}</p>
+
+              {confirmingReset ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-300 leading-relaxed">{t('confirmResetLayout')}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setConfirmingReset(false);
+                        setConfirmingClear(false);
+                        setClearInput('');
+                        onResetLayout();
+                      }}
+                      className="flex-1 text-sm py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+                    >
+                      {t('confirmYes')}
+                    </button>
+                    <button
+                      onClick={() => setConfirmingReset(false)}
+                      className="flex-1 text-sm py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                    >
+                      {t('cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setConfirmingReset(true);
+                    setConfirmingClear(false);
+                  }}
+                  className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+                >
+                  🔄 {t('resetLayout')}
+                </button>
+              )}
+
+              {confirmingClear ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {t('confirmTypeHint')
+                      .replace('{word}', `「${clearWord}」`)
+                      .replace('{count}', String(entities.length))}
+                  </p>
+                  <input
+                    autoFocus
+                    value={clearInput}
+                    onChange={(e) => setClearInput(e.target.value)}
+                    placeholder={clearWord}
+                    className="w-full text-sm py-2 px-3 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 focus:border-red-500 outline-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      disabled={!clearArmed}
+                      onClick={() => {
+                        setConfirmingClear(false);
+                        setClearInput('');
+                        onClearData();
+                      }}
+                      className="flex-1 text-sm py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors"
+                    >
+                      {t('confirmClearAction')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmingClear(false);
+                        setClearInput('');
+                      }}
+                      className="flex-1 text-sm py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                    >
+                      {t('cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setConfirmingClear(true);
+                    setConfirmingReset(false);
+                  }}
+                  className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-red-900/30 text-slate-300 hover:text-red-300 transition-colors"
+                >
+                  🗑️ {t('clearData')}
+                </button>
+              )}
             </div>
           </div>
 
