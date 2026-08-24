@@ -137,11 +137,11 @@ export default function App() {
     }
   };
 
-  const handlePositionChange = (id: string, x: number, y: number) => {
+  const handlePositionChange = useCallback((id: string, x: number, y: number) => {
     setEntities((prev) => prev.map((e) =>
       e.id === id ? { ...e, position: { x, y } } : e
     ));
-  };
+  }, []);
 
   const handleExport = () => {
     const data = JSON.stringify(entities, null, 2);

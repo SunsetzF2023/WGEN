@@ -15,19 +15,21 @@ interface EntityDetailProps {
 
 export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn }: EntityDetailProps) {
   const { t } = useI18n();
-  if (!entity) return null;
-
-  const meta = ENTITY_TYPE_META[entity.type];
-  const entityMap = new Map(allEntities.map((e) => [e.id, e]));
 
   // Backlinks: entities that link TO this entity
   const backlinks = useMemo(() => {
+    if (!entity) return [];
     return allEntities.filter((e) =>
       e.id !== entity.id &&
       (e.relationIds.includes(entity.id) ||
         e.fields.some((f) => f.linkedEntityId === entity.id))
     );
-  }, [allEntities, entity.id]);
+  }, [allEntities, entity]);
+
+  if (!entity) return null;
+
+  const meta = ENTITY_TYPE_META[entity.type];
+  const entityMap = new Map(allEntities.map((e) => [e.id, e]));
 
   const handleFieldClick = (linkedId?: string) => {
     if (linkedId && entityMap.has(linkedId)) {
