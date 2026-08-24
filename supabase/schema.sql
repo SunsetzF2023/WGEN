@@ -13,6 +13,7 @@ create table if not exists entities (
   fields jsonb default '[]'::jsonb,
   tags text[] default '{}',
   relation_ids text[] default '{}',
+  position jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

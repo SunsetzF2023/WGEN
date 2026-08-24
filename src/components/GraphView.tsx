@@ -19,9 +19,10 @@ interface GraphViewProps {
   entities: Entity[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onPositionChange?: (id: string, x: number, y: number) => void;
 }
 
-export function GraphView({ entities, selectedId, onSelect }: GraphViewProps) {
+export function GraphView({ entities, selectedId, onSelect, onPositionChange }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -33,12 +34,16 @@ export function GraphView({ entities, selectedId, onSelect }: GraphViewProps) {
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
 
-    // Build nodes
+    // Build nodes — use saved positions if available
     const nodes: GraphNode[] = entities.map((e) => ({
       id: e.id,
       name: e.name,
       type: e.type,
       icon: e.icon,
+      x: e.position?.x,
+      y: e.position?.y,
+      fx: e.position?.x,
+      fy: e.position?.y,
     }));
 
     // Build links from relationIds
@@ -87,8 +92,10 @@ export function GraphView({ entities, selectedId, onSelect }: GraphViewProps) {
         })
         .on('end', (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
-          d.fx = null;
-          d.fy = null;
+          // Keep fx/fy set so node stays in place
+          if (onPositionChange) {
+            onPositionChange(d.id, d.x!, d.y!);
+          }
         })
       );
 
@@ -136,7 +143,7 @@ export function GraphView({ entities, selectedId, onSelect }: GraphViewProps) {
     return () => {
       simulation.stop();
     };
-  }, [entities, selectedId, onSelect]);
+  }, [entities, selectedId, onSelect, onPositionChange]);
 
   return (
     <svg ref={svgRef} className="w-full h-full" />

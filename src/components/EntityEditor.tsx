@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { marked } from 'marked';
 import type { Entity, EntityType, EntityField } from '../types';
 import { ENTITY_TYPE_META, FIELD_TEMPLATES } from '../types';
 
@@ -23,6 +24,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
   const [tags, setTags] = useState((entity?.tags || []).join(', '));
   const [fields, setFields] = useState<EntityField[]>(entity?.fields || []);
   const [relationIds, setRelationIds] = useState<string[]>(entity?.relationIds || []);
+  const [mdPreview, setMdPreview] = useState(false);
 
   const applyTemplate = (newType: EntityType) => {
     setType(newType);
@@ -135,16 +137,41 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
             />
           </div>
 
-          {/* Description */}
+          {/* Description with Markdown toggle */}
           <div>
-            <label className="text-xs text-slate-500 block mb-1">详细描述</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="详细描述..."
-              rows={4}
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 resize-y"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-slate-500">详细描述</label>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMdPreview(false)}
+                  className={`text-xs px-2 py-0.5 rounded ${!mdPreview ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMdPreview(true)}
+                  className={`text-xs px-2 py-0.5 rounded ${mdPreview ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  预览
+                </button>
+              </div>
+            </div>
+            {mdPreview ? (
+              <div
+                className="w-full min-h-[100px] bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-300 markdown-body"
+                dangerouslySetInnerHTML={{ __html: marked.parse(description || '*（空）*', { async: false }) as string }}
+              />
+            ) : (
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="支持 Markdown 语法…&#10;## 标题&#10;**粗体** *斜体*&#10;- 列表项&#10;> 引用"
+                rows={5}
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 resize-y font-mono"
+              />
+            )}
           </div>
 
           {/* Media URLs */}

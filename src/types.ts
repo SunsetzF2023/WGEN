@@ -33,6 +33,8 @@ export interface Entity {
   tags: string[];
   /** IDs of related entities (for graph edges) */
   relationIds: string[];
+  /** Optional saved position for graph layout */
+  position?: { x: number; y: number };
   /** User who created this entity */
   owner_id: string;
   created_at: string;

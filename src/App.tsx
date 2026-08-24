@@ -133,6 +133,46 @@ export default function App() {
     }
   };
 
+  const handlePositionChange = (id: string, x: number, y: number) => {
+    setEntities((prev) => prev.map((e) =>
+      e.id === id ? { ...e, position: { x, y } } : e
+    ));
+  };
+
+  const handleExport = () => {
+    const data = JSON.stringify(entities, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `worldforge-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (!Array.isArray(data)) throw new Error('Invalid format');
+        const imported = data.map((e: Entity) => ({
+          ...e,
+          owner_id: user?.id || 'local',
+          updated_at: new Date().toISOString(),
+        }));
+        setEntities(imported);
+        setShowSeedPrompt(false);
+      } catch {
+        alert('导入失败：JSON 格式不正确');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   // Filtered entities for graph
   const filteredEntities = entities.filter((e) => {
     if (filterType !== 'all' && e.type !== filterType) return false;
@@ -175,6 +215,23 @@ export default function App() {
           >
             ➕ 新建
           </button>
+
+          {/* Export / Import */}
+          {entities.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleExport}
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300"
+                title="导出 JSON"
+              >
+                ⬇️ 导出
+              </button>
+              <label className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer" title="导入 JSON">
+                ⬆️ 导入
+                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              </label>
+            </div>
+          )}
 
           {/* Auth */}
           {authState === 'logged_in' && user ? (
@@ -254,6 +311,7 @@ export default function App() {
             entities={filteredEntities}
             selectedId={selectedId}
             onSelect={handleSelect}
+            onPositionChange={handlePositionChange}
           />
         )}
 

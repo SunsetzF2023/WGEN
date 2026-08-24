@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { marked } from 'marked';
 import type { Entity } from '../types';
 import { ENTITY_TYPE_META } from '../types';
 
@@ -16,10 +18,24 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
   const meta = ENTITY_TYPE_META[entity.type];
   const entityMap = new Map(allEntities.map((e) => [e.id, e]));
 
+  // Backlinks: entities that link TO this entity
+  const backlinks = useMemo(() => {
+    return allEntities.filter((e) =>
+      e.id !== entity.id &&
+      (e.relationIds.includes(entity.id) ||
+        e.fields.some((f) => f.linkedEntityId === entity.id))
+    );
+  }, [allEntities, entity.id]);
+
   const handleFieldClick = (linkedId?: string) => {
     if (linkedId && entityMap.has(linkedId)) {
       onSelectEntity(linkedId);
     }
+  };
+
+  const renderMarkdown = (md: string) => {
+    const html = marked.parse(md, { async: false }) as string;
+    return { __html: html };
   };
 
   return (
@@ -64,11 +80,14 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
           <p className="text-sm text-slate-400 italic">{entity.summary}</p>
         )}
 
-        {/* Description */}
+        {/* Description (Markdown rendered) */}
         {entity.description && (
           <div>
             <h3 className="text-xs uppercase text-slate-500 mb-1.5 font-semibold tracking-wider">概述</h3>
-            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{entity.description}</p>
+            <div
+              className="text-sm text-slate-300 leading-relaxed markdown-body"
+              dangerouslySetInnerHTML={renderMarkdown(entity.description)}
+            />
           </div>
         )}
 
@@ -140,6 +159,27 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
                   </button>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Backlinks */}
+        {backlinks.length > 0 && (
+          <div>
+            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">
+              反向链接 ({backlinks.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {backlinks.map((bl) => (
+                <button
+                  key={bl.id}
+                  onClick={() => onSelectEntity(bl.id)}
+                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                >
+                  <span>{bl.icon}</span>
+                  <span>{bl.name}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}

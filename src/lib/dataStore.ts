@@ -66,6 +66,7 @@ function rowToEntity(row: Record<string, unknown>): Entity {
     fields: (row.fields as Entity['fields']) || [],
     tags: (row.tags as string[]) || [],
     relationIds: (row.relation_ids as string[]) || [],
+    position: (row.position as { x: number; y: number }) || undefined,
     owner_id: row.owner_id as string,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
@@ -85,6 +86,7 @@ function entityToRow(e: Entity): Record<string, unknown> {
     fields: e.fields,
     tags: e.tags,
     relation_ids: e.relationIds,
+    position: e.position || null,
     owner_id: e.owner_id,
     updated_at: e.updated_at,
   };
