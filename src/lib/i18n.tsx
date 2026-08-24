@@ -1,0 +1,284 @@
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+
+export type Language = 'zh-CN' | 'zh-TW' | 'en';
+
+export const LANGUAGES: { code: Language; label: string; native: string }[] = [
+  { code: 'zh-CN', label: '简体中文', native: '简' },
+  { code: 'zh-TW', label: '繁體中文', native: '繁' },
+  { code: 'en', label: 'English', native: 'EN' },
+];
+
+type Dict = Record<string, string>;
+
+const zhCN: Dict = {
+  appTitle: 'WorldForge · 世界观生成器',
+  search: '搜索实体…',
+  newEntity: '➕ 新建',
+  export: '⬇️ 导出',
+  import: '⬆️ 导入',
+  logout: '退出',
+  loginGithub: '🔗 GitHub 登录',
+  all: '全部',
+  loading: '加载中…',
+  emptyTitle: '开始构建你的世界观',
+  emptyDesc: '创建人物、势力、地点、功法等实体，用关联关系将它们连接成一张知识网络。',
+  createFirst: '➕ 创建第一个实体',
+  loadSeed: '📦 加载示例数据',
+  // Entity types
+  typeCharacter: '人物',
+  typeFaction: '势力',
+  typeLocation: '地点',
+  typeTechnique: '功法',
+  typeEvent: '事件',
+  typeItem: '物品',
+  typeRealm: '境界',
+  typeCustom: '自定义',
+  // Detail panel
+  overview: '概述',
+  details: '详细资料',
+  tags: '标签',
+  audio: '音频',
+  relations: '关联实体',
+  backlinks: '反向链接',
+  editEntity: '✏️ 编辑实体',
+  // Editor
+  editTitle: '✏️ 编辑实体',
+  createTitle: '➕ 创建实体',
+  typeLabel: '类型',
+  customTypeLabel: '自定义类型名称',
+  customTypePlaceholder: '如：概念、种族、职业、规则…',
+  summary: '简述',
+  summaryPlaceholder: '一句话概括',
+  description: '详细描述',
+  mdEdit: '编辑',
+  mdPreview: '预览',
+  imageUrl: '图片 URL',
+  audioUrl: '音频 URL',
+  tagsLabel: '标签（逗号分隔）',
+  tagsPlaceholder: '标签1, 标签2',
+  fieldsLabel: '详细字段',
+  addField: '+ 添加字段',
+  fieldName: '字段名',
+  fieldValue: '内容',
+  noLink: '无链接',
+  relationsLabel: '关联实体（图表中的连线）',
+  delete: '🗑️ 删除',
+  cancel: '取消',
+  save: '保存',
+  confirmDelete: '确定删除此实体？',
+  enterName: '请输入实体名称',
+  importError: '导入失败：JSON 格式不正确',
+  // Sidebar
+  menu: '菜单',
+  home: '主页',
+  language: '语言',
+  settings: '设置',
+  resetLayout: '重置节点布局',
+  clearData: '清空所有数据',
+  confirmClear: '确定清空所有数据？此操作不可撤销。',
+  stats: '统计',
+  entityCount: '实体总数',
+  relationCount: '关联数量',
+  about: '关于',
+  aboutText: 'WorldForge — 可视化世界观构建工具。用知识图谱的方式管理和链接你的世界观实体。',
+  // Markdown empty
+  mdEmpty: '*（空）*',
+};
+
+const zhTW: Dict = {
+  appTitle: 'WorldForge · 世界觀生成器',
+  search: '搜尋實體…',
+  newEntity: '➕ 新建',
+  export: '⬇️ 匯出',
+  import: '⬆️ 匯入',
+  logout: '登出',
+  loginGithub: '🔗 GitHub 登入',
+  all: '全部',
+  loading: '載入中…',
+  emptyTitle: '開始建構你的世界觀',
+  emptyDesc: '建立人物、勢力、地點、功法等實體，用關聯關係將它們連接成一張知識網路。',
+  createFirst: '➕ 建立第一個實體',
+  loadSeed: '📦 載入範例資料',
+  typeCharacter: '人物',
+  typeFaction: '勢力',
+  typeLocation: '地點',
+  typeTechnique: '功法',
+  typeEvent: '事件',
+  typeItem: '物品',
+  typeRealm: '境界',
+  typeCustom: '自訂',
+  overview: '概述',
+  details: '詳細資料',
+  tags: '標籤',
+  audio: '音訊',
+  relations: '關聯實體',
+  backlinks: '反向連結',
+  editEntity: '✏️ 編輯實體',
+  editTitle: '✏️ 編輯實體',
+  createTitle: '➕ 建立實體',
+  typeLabel: '類型',
+  customTypeLabel: '自訂類型名稱',
+  customTypePlaceholder: '如：概念、種族、職業、規則…',
+  summary: '簡述',
+  summaryPlaceholder: '一句話概括',
+  description: '詳細描述',
+  mdEdit: '編輯',
+  mdPreview: '預覽',
+  imageUrl: '圖片 URL',
+  audioUrl: '音訊 URL',
+  tagsLabel: '標籤（逗號分隔）',
+  tagsPlaceholder: '標籤1, 標籤2',
+  fieldsLabel: '詳細欄位',
+  addField: '+ 新增欄位',
+  fieldName: '欄位名',
+  fieldValue: '內容',
+  noLink: '無連結',
+  relationsLabel: '關聯實體（圖表中的連線）',
+  delete: '🗑️ 刪除',
+  cancel: '取消',
+  save: '儲存',
+  confirmDelete: '確定刪除此實體？',
+  enterName: '請輸入實體名稱',
+  importError: '匯入失敗：JSON 格式不正確',
+  menu: '選單',
+  home: '首頁',
+  language: '語言',
+  settings: '設定',
+  resetLayout: '重設節點佈局',
+  clearData: '清空所有資料',
+  confirmClear: '確定清空所有資料？此操作無法復原。',
+  stats: '統計',
+  entityCount: '實體總數',
+  relationCount: '關聯數量',
+  about: '關於',
+  aboutText: 'WorldForge — 視覺化世界觀建構工具。用知識圖譜的方式管理和連結你的世界觀實體。',
+  mdEmpty: '*（空）*',
+};
+
+const en: Dict = {
+  appTitle: 'WorldForge · World Builder',
+  search: 'Search entities…',
+  newEntity: '➕ New',
+  export: '⬇️ Export',
+  import: '⬆️ Import',
+  logout: 'Logout',
+  loginGithub: '🔗 GitHub Login',
+  all: 'All',
+  loading: 'Loading…',
+  emptyTitle: 'Start building your world',
+  emptyDesc: 'Create characters, factions, locations, techniques and more. Link them together into a knowledge graph.',
+  createFirst: '➕ Create first entity',
+  loadSeed: '📦 Load sample data',
+  typeCharacter: 'Character',
+  typeFaction: 'Faction',
+  typeLocation: 'Location',
+  typeTechnique: 'Technique',
+  typeEvent: 'Event',
+  typeItem: 'Item',
+  typeRealm: 'Realm',
+  typeCustom: 'Custom',
+  overview: 'Overview',
+  details: 'Fields',
+  tags: 'Tags',
+  audio: 'Audio',
+  relations: 'Relations',
+  backlinks: 'Backlinks',
+  editEntity: '✏️ Edit Entity',
+  editTitle: '✏️ Edit Entity',
+  createTitle: '➕ Create Entity',
+  typeLabel: 'Type',
+  customTypeLabel: 'Custom type name',
+  customTypePlaceholder: 'e.g. Concept, Race, Class, Rule…',
+  summary: 'Summary',
+  summaryPlaceholder: 'One-line description',
+  description: 'Description',
+  mdEdit: 'Edit',
+  mdPreview: 'Preview',
+  imageUrl: 'Image URL',
+  audioUrl: 'Audio URL',
+  tagsLabel: 'Tags (comma separated)',
+  tagsPlaceholder: 'tag1, tag2',
+  fieldsLabel: 'Fields',
+  addField: '+ Add field',
+  fieldName: 'Field name',
+  fieldValue: 'Value',
+  noLink: 'No link',
+  relationsLabel: 'Related entities (graph edges)',
+  delete: '🗑️ Delete',
+  cancel: 'Cancel',
+  save: 'Save',
+  confirmDelete: 'Delete this entity?',
+  enterName: 'Please enter an entity name',
+  importError: 'Import failed: Invalid JSON format',
+  menu: 'Menu',
+  home: 'Home',
+  language: 'Language',
+  settings: 'Settings',
+  resetLayout: 'Reset node layout',
+  clearData: 'Clear all data',
+  confirmClear: 'Clear all data? This cannot be undone.',
+  stats: 'Stats',
+  entityCount: 'Total entities',
+  relationCount: 'Relations',
+  about: 'About',
+  aboutText: 'WorldForge — Visual worldbuilding tool. Manage and link your world entities with a knowledge graph.',
+  mdEmpty: '*(empty)*',
+};
+
+const DICTS: Record<Language, Dict> = { 'zh-CN': zhCN, 'zh-TW': zhTW, en };
+
+const LANG_KEY = 'wgen_lang';
+
+function getInitialLang(): Language {
+  const saved = localStorage.getItem(LANG_KEY) as Language | null;
+  if (saved && saved in DICTS) return saved;
+  return 'zh-CN';
+}
+
+interface I18nContextValue {
+  lang: Language;
+  setLang: (l: Language) => void;
+  t: (key: string) => string;
+}
+
+const I18nContext = createContext<I18nContextValue | null>(null);
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [lang, setLangState] = useState<Language>(getInitialLang);
+
+  const setLang = useCallback((l: Language) => {
+    setLangState(l);
+    localStorage.setItem(LANG_KEY, l);
+  }, []);
+
+  const t = useCallback((key: string) => {
+    return DICTS[lang][key] ?? key;
+  }, [lang]);
+
+  return (
+    <I18nContext.Provider value={{ lang, setLang, t }}>
+      {children}
+    </I18nContext.Provider>
+  );
+}
+
+export function useI18n() {
+  const ctx = useContext(I18nContext);
+  if (!ctx) throw new Error('useI18n must be used within I18nProvider');
+  return ctx;
+}
+
+/** Get entity type label by type key */
+export function getTypeLabel(type: string, t: (key: string) => string): string {
+  const map: Record<string, string> = {
+    character: t('typeCharacter'),
+    faction: t('typeFaction'),
+    location: t('typeLocation'),
+    technique: t('typeTechnique'),
+    event: t('typeEvent'),
+    item: t('typeItem'),
+    realm: t('typeRealm'),
+    custom: t('typeCustom'),
+  };
+  return map[type] || type;
+}

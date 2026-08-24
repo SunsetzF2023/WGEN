@@ -4,13 +4,16 @@ import { ENTITY_TYPE_META } from './types';
 import { GraphView } from './components/GraphView';
 import { EntityDetail } from './components/EntityDetail';
 import { EntityEditor } from './components/EntityEditor';
+import { Sidebar } from './components/Sidebar';
 import { supabase, signInWithGitHub, signOut } from './lib/supabase';
 import { loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity } from './lib/dataStore';
 import { SEED_ENTITIES } from './lib/seedData';
+import { useI18n, getTypeLabel } from './lib/i18n';
 
 type AuthState = 'loading' | 'logged_in' | 'logged_out';
 
 export default function App() {
+  const { t } = useI18n();
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [user, setUser] = useState<{ id: string; name: string } | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -20,6 +23,7 @@ export default function App() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
   const [showSeedPrompt, setShowSeedPrompt] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Auth init
   useEffect(() => {
@@ -166,7 +170,7 @@ export default function App() {
         setEntities(imported);
         setShowSeedPrompt(false);
       } catch {
-        alert('导入失败：JSON 格式不正确');
+        alert(t('importError'));
       }
     };
     reader.readAsText(file);
@@ -185,18 +189,43 @@ export default function App() {
   if (authState === 'loading') {
     return (
       <div className="w-full h-full flex items-center justify-center text-slate-400">
-        加载中…
+        {t('loading')}
       </div>
     );
   }
 
   return (
     <div className="w-full h-full flex flex-col">
+      {/* Sidebar */}
+      <Sidebar
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        entities={entities}
+        onResetLayout={() => {
+          setEntities((prev) => prev.map((e) => ({ ...e, position: undefined })));
+          setSidebarOpen(false);
+        }}
+        onClearData={() => {
+          if (confirm(t('confirmClear'))) {
+            setEntities([]);
+            setSelectedId(null);
+            setSidebarOpen(false);
+          }
+        }}
+      />
+
       {/* Top bar */}
       <header className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-700 shrink-0">
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="text-slate-400 hover:text-slate-200 text-lg leading-none"
+            title={t('menu')}
+          >
+            ☰
+          </button>
           <span className="text-xl">🌐</span>
-          <span className="text-sm font-semibold text-slate-200">WorldForge · 世界观生成器</span>
+          <span className="text-sm font-semibold text-slate-200">{t('appTitle')}</span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -204,7 +233,7 @@ export default function App() {
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索实体…"
+            placeholder={t('search')}
             className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 w-40"
           />
 
@@ -213,7 +242,7 @@ export default function App() {
             onClick={handleNewEntity}
             className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
           >
-            ➕ 新建
+            {t('newEntity')}
           </button>
 
           {/* Export / Import */}
@@ -222,12 +251,12 @@ export default function App() {
               <button
                 onClick={handleExport}
                 className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300"
-                title="导出 JSON"
+                title={t('export')}
               >
-                ⬇️ 导出
+                {t('export')}
               </button>
-              <label className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer" title="导入 JSON">
-                ⬆️ 导入
+              <label className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer" title={t('import')}>
+                {t('import')}
                 <input type="file" accept=".json" onChange={handleImport} className="hidden" />
               </label>
             </div>
@@ -241,7 +270,7 @@ export default function App() {
                 onClick={() => signOut()}
                 className="text-xs text-slate-500 hover:text-slate-300"
               >
-                退出
+                {t('logout')}
               </button>
             </div>
           ) : (
@@ -249,7 +278,7 @@ export default function App() {
               onClick={() => signInWithGitHub()}
               className="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300"
             >
-              🔗 GitHub 登录
+              {t('loginGithub')}
             </button>
           )}
         </div>
@@ -261,18 +290,18 @@ export default function App() {
           onClick={() => setFilterType('all')}
           className={`text-xs px-2.5 py-1 rounded-lg ${filterType === 'all' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
         >
-          全部 ({entities.length})
+          {t('all')} ({entities.length})
         </button>
-        {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((t) => {
-          const count = entities.filter((e) => e.type === t).length;
+        {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((tp) => {
+          const count = entities.filter((e) => e.type === tp).length;
           if (count === 0) return null;
           return (
             <button
-              key={t}
-              onClick={() => setFilterType(t)}
-              className={`text-xs px-2.5 py-1 rounded-lg ${filterType === t ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+              key={tp}
+              onClick={() => setFilterType(tp)}
+              className={`text-xs px-2.5 py-1 rounded-lg ${filterType === tp ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              {ENTITY_TYPE_META[t].icon} {ENTITY_TYPE_META[t].label} ({count})
+              {ENTITY_TYPE_META[tp].icon} {getTypeLabel(tp, t)} ({count})
             </button>
           );
         })}
@@ -284,23 +313,23 @@ export default function App() {
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <div className="text-5xl mb-4">🌐</div>
-              <h2 className="text-xl text-slate-200 mb-2">开始构建你的世界观</h2>
+              <h2 className="text-xl text-slate-200 mb-2">{t('emptyTitle')}</h2>
               <p className="text-sm text-slate-500 mb-6">
-                创建人物、势力、地点、功法等实体，用关联关系将它们连接成一张知识网络。
+                {t('emptyDesc')}
               </p>
               <div className="flex gap-3 justify-center">
                 <button
                   onClick={handleNewEntity}
                   className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
                 >
-                  ➕ 创建第一个实体
+                  {t('createFirst')}
                 </button>
                 {showSeedPrompt && (
                   <button
                     onClick={handleLoadSeed}
                     className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm"
                   >
-                    📦 加载示例数据
+                    {t('loadSeed')}
                   </button>
                 )}
               </div>

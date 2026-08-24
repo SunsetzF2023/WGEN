@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { marked } from 'marked';
 import type { Entity } from '../types';
 import { ENTITY_TYPE_META } from '../types';
+import { useI18n, getTypeLabel } from '../lib/i18n';
 
 interface EntityDetailProps {
   entity: Entity | null;
@@ -13,6 +14,7 @@ interface EntityDetailProps {
 }
 
 export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn }: EntityDetailProps) {
+  const { t } = useI18n();
   if (!entity) return null;
 
   const meta = ENTITY_TYPE_META[entity.type];
@@ -51,7 +53,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
                 className="inline-block text-xs px-2 py-0.5 rounded-full mt-1"
                 style={{ backgroundColor: meta.color + '22', color: meta.color }}
               >
-                {meta.icon} {entity.customTypeLabel || meta.label}
+                {meta.icon} {entity.customTypeLabel || getTypeLabel(entity.type, t)}
               </span>
             </div>
           </div>
@@ -83,7 +85,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         {/* Description (Markdown rendered) */}
         {entity.description && (
           <div>
-            <h3 className="text-xs uppercase text-slate-500 mb-1.5 font-semibold tracking-wider">概述</h3>
+            <h3 className="text-xs uppercase text-slate-500 mb-1.5 font-semibold tracking-wider">{t('overview')}</h3>
             <div
               className="text-sm text-slate-300 leading-relaxed markdown-body"
               dangerouslySetInnerHTML={renderMarkdown(entity.description)}
@@ -94,7 +96,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         {/* Fields */}
         {entity.fields.length > 0 && (
           <div>
-            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">详细资料</h3>
+            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">{t('details')}</h3>
             <div className="space-y-1.5">
               {entity.fields.map((field, i) => {
                 const linkedId = field.linkedEntityId;
@@ -121,7 +123,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         {/* Tags */}
         {entity.tags.length > 0 && (
           <div>
-            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">标签</h3>
+            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">{t('tags')}</h3>
             <div className="flex flex-wrap gap-1.5">
               {entity.tags.map((tag, i) => (
                 <span key={i} className="text-xs px-2 py-1 rounded bg-slate-800 text-slate-400">
@@ -135,7 +137,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         {/* Audio */}
         {entity.audioUrl && (
           <div>
-            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">音频</h3>
+            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">{t('audio')}</h3>
             <audio controls src={entity.audioUrl} className="w-full" />
           </div>
         )}
@@ -143,7 +145,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         {/* Relations */}
         {entity.relationIds.length > 0 && (
           <div>
-            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">关联实体</h3>
+            <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">{t('relations')}</h3>
             <div className="flex flex-wrap gap-2">
               {entity.relationIds.map((rid) => {
                 const rel = entityMap.get(rid);
@@ -167,7 +169,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         {backlinks.length > 0 && (
           <div>
             <h3 className="text-xs uppercase text-slate-500 mb-2 font-semibold tracking-wider">
-              反向链接 ({backlinks.length})
+              {t('backlinks')} ({backlinks.length})
             </h3>
             <div className="flex flex-wrap gap-2">
               {backlinks.map((bl) => (
@@ -190,7 +192,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
             onClick={onEdit}
             className="w-full mt-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
           >
-            ✏️ 编辑实体
+            {t('editEntity')}
           </button>
         )}
       </div>

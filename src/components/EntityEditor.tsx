@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { marked } from 'marked';
 import type { Entity, EntityType, EntityField } from '../types';
 import { ENTITY_TYPE_META, FIELD_TEMPLATES } from '../types';
+import { useI18n, getTypeLabel } from '../lib/i18n';
 
 interface EntityEditorProps {
   entity: Entity | null;
@@ -12,6 +13,7 @@ interface EntityEditorProps {
 }
 
 export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }: EntityEditorProps) {
+  const { t } = useI18n();
   const isEditing = !!entity;
 
   const [name, setName] = useState(entity?.name || '');
@@ -57,7 +59,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
 
   const handleSave = () => {
     if (!name.trim()) {
-      alert('请输入实体名称');
+      alert(t('enterName'));
       return;
     }
     const now = new Date().toISOString();
@@ -71,7 +73,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
       description,
       imageUrl: imageUrl || undefined,
       audioUrl: audioUrl || undefined,
-      tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+      tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
       fields: fields.filter((f) => f.value.trim() || f.linkedEntityId),
       relationIds,
       owner_id: entity?.owner_id || '',
@@ -87,7 +89,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
         {/* Header */}
         <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between z-10">
           <h2 className="text-lg font-semibold text-slate-100">
-            {isEditing ? '✏️ 编辑实体' : '➕ 创建实体'}
+            {isEditing ? t('editTitle') : t('createTitle')}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-xl">✕</button>
         </div>
@@ -104,25 +106,25 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="实体名称"
+              placeholder={t('enterName')}
               className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500"
             />
           </div>
 
           <div>
-            <label className="text-xs text-slate-500 block mb-1">类型</label>
+            <label className="text-xs text-slate-500 block mb-1">{t('typeLabel')}</label>
             <div className="flex flex-wrap gap-2">
-              {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((t) => (
+              {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((tp) => (
                 <button
-                  key={t}
-                  onClick={() => applyTemplate(t)}
+                  key={tp}
+                  onClick={() => applyTemplate(tp)}
                   className={`text-sm px-3 py-1.5 rounded-lg border transition-colors ${
-                    type === t
+                    type === tp
                       ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
                       : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500'
                   }`}
                 >
-                  {ENTITY_TYPE_META[t].icon} {ENTITY_TYPE_META[t].label}
+                  {ENTITY_TYPE_META[tp].icon} {getTypeLabel(tp, t)}
                 </button>
               ))}
             </div>
@@ -131,11 +133,11 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
           {/* Custom type label input */}
           {type === 'custom' && (
             <div>
-              <label className="text-xs text-slate-500 block mb-1">自定义类型名称</label>
+              <label className="text-xs text-slate-500 block mb-1">{t('customTypeLabel')}</label>
               <input
                 value={customTypeLabel}
                 onChange={(e) => setCustomTypeLabel(e.target.value)}
-                placeholder="如：概念、种族、职业、规则…"
+                placeholder={t('customTypePlaceholder')}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
               />
             </div>
@@ -143,11 +145,11 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
 
           {/* Summary */}
           <div>
-            <label className="text-xs text-slate-500 block mb-1">简述</label>
+            <label className="text-xs text-slate-500 block mb-1">{t('summary')}</label>
             <input
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="一句话概括"
+              placeholder={t('summaryPlaceholder')}
               className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
             />
           </div>
@@ -155,28 +157,28 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
           {/* Description with Markdown toggle */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-slate-500">详细描述</label>
+              <label className="text-xs text-slate-500">{t('description')}</label>
               <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() => setMdPreview(false)}
                   className={`text-xs px-2 py-0.5 rounded ${!mdPreview ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
                 >
-                  编辑
+                  {t('mdEdit')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMdPreview(true)}
                   className={`text-xs px-2 py-0.5 rounded ${mdPreview ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
                 >
-                  预览
+                  {t('mdPreview')}
                 </button>
               </div>
             </div>
             {mdPreview ? (
               <div
                 className="w-full min-h-[100px] bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-300 markdown-body"
-                dangerouslySetInnerHTML={{ __html: marked.parse(description || '*（空）*', { async: false }) as string }}
+                dangerouslySetInnerHTML={{ __html: marked.parse(description || t('mdEmpty'), { async: false }) as string }}
               />
             ) : (
               <textarea
@@ -192,7 +194,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
           {/* Media URLs */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500 block mb-1">图片 URL</label>
+              <label className="text-xs text-slate-500 block mb-1">{t('imageUrl')}</label>
               <input
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
@@ -201,7 +203,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500 block mb-1">音频 URL</label>
+              <label className="text-xs text-slate-500 block mb-1">{t('audioUrl')}</label>
               <input
                 value={audioUrl}
                 onChange={(e) => setAudioUrl(e.target.value)}
@@ -213,11 +215,11 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
 
           {/* Tags */}
           <div>
-            <label className="text-xs text-slate-500 block mb-1">标签（逗号分隔）</label>
+            <label className="text-xs text-slate-500 block mb-1">{t('tagsLabel')}</label>
             <input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="标签1, 标签2"
+              placeholder={t('tagsPlaceholder')}
               className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
             />
           </div>
@@ -225,8 +227,8 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
           {/* Fields */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-slate-500 font-semibold">详细字段</label>
-              <button onClick={addField} className="text-xs text-indigo-400 hover:text-indigo-300">+ 添加字段</button>
+              <label className="text-xs text-slate-500 font-semibold">{t('fieldsLabel')}</label>
+              <button onClick={addField} className="text-xs text-indigo-400 hover:text-indigo-300">{t('addField')}</button>
             </div>
             <div className="space-y-2">
               {fields.map((field, i) => (
@@ -234,13 +236,13 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
                   <input
                     value={field.label}
                     onChange={(e) => updateField(i, 'label', e.target.value)}
-                    placeholder="字段名"
+                    placeholder={t('fieldName')}
                     className="w-24 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-slate-100 placeholder-slate-500 shrink-0"
                   />
                   <input
                     value={field.value}
                     onChange={(e) => updateField(i, 'value', e.target.value)}
-                    placeholder="内容"
+                    placeholder={t('fieldValue')}
                     className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-xs text-slate-100 placeholder-slate-500"
                   />
                   <select
@@ -248,7 +250,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
                     onChange={(e) => updateField(i, 'linkedEntityId', e.target.value)}
                     className="w-32 bg-slate-800 border border-slate-600 rounded-lg px-1 py-1.5 text-xs text-slate-300 shrink-0"
                   >
-                    <option value="">无链接</option>
+                    <option value="">{t('noLink')}</option>
                     {allEntities.filter((e) => e.id !== entity?.id).map((e) => (
                       <option key={e.id} value={e.id}>{e.name}</option>
                     ))}
@@ -266,7 +268,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
 
           {/* Relations */}
           <div>
-            <label className="text-xs text-slate-500 block mb-2">关联实体（图表中的连线）</label>
+            <label className="text-xs text-slate-500 block mb-2">{t('relationsLabel')}</label>
             <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
               {allEntities.filter((e) => e.id !== entity?.id).map((e) => (
                 <button
@@ -290,10 +292,10 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
           <div>
             {isEditing && (
               <button
-                onClick={() => { if (confirm('确定删除此实体？')) onDelete(entity!.id); }}
+                onClick={() => { if (confirm(t('confirmDelete'))) onDelete(entity!.id); }}
                 className="text-sm text-red-400 hover:text-red-300"
               >
-                🗑️ 删除
+                {t('delete')}
               </button>
             )}
           </div>
@@ -302,13 +304,13 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
               onClick={onClose}
               className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm"
             >
-              取消
+              {t('cancel')}
             </button>
             <button
               onClick={handleSave}
               className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
             >
-              保存
+              {t('save')}
             </button>
           </div>
         </div>
