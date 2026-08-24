@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import type { Entity } from '../types';
 import { ENTITY_TYPE_META } from '../types';
@@ -22,11 +22,41 @@ interface GraphViewProps {
   onPositionChange?: (id: string, x: number, y: number) => void;
 }
 
+/** Distance in px below which a drag gesture counts as a click */
+const DRAG_TOLERANCE = 3;
+
 export function GraphView({ entities, selectedId, onSelect, onPositionChange }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const nodeSelRef = useRef<d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown> | null>(null);
+  const nodesRef = useRef<GraphNode[]>([]);
+  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
+  const entitiesRef = useRef(entities);
+  const selectedIdRef = useRef(selectedId);
+  const onSelectRef = useRef(onSelect);
+  const onPositionChangeRef = useRef(onPositionChange);
 
   useEffect(() => {
-    if (!svgRef.current || entities.length === 0) return;
+    entitiesRef.current = entities;
+    selectedIdRef.current = selectedId;
+    onSelectRef.current = onSelect;
+    onPositionChangeRef.current = onPositionChange;
+  });
+
+  /** Only a structural change (nodes, edges, labels) requires rebuilding the graph */
+  const structureKey = useMemo(
+    () => entities.map((e) => `${e.id}|${e.name}|${e.type}|${e.icon}|${e.relationIds.join(',')}`).join('\n'),
+    [entities]
+  );
+
+  /** Pinned positions are applied to the running simulation instead of rebuilding it */
+  const positionKey = useMemo(
+    () => entities.map((e) => `${e.id}|${e.position ? `${e.position.x},${e.position.y}` : ''}`).join('\n'),
+    [entities]
+  );
+
+  useEffect(() => {
+    const currentEntities = entitiesRef.current;
+    if (!svgRef.current || currentEntities.length === 0) return;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
@@ -35,7 +65,7 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
     const height = svgRef.current.clientHeight;
 
     // Build nodes — use saved positions if available
-    const nodes: GraphNode[] = entities.map((e) => ({
+    const nodes: GraphNode[] = currentEntities.map((e) => ({
       id: e.id,
       name: e.name,
       type: e.type,
@@ -49,7 +79,7 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
     // Build links from relationIds
     const nodeIds = new Set(nodes.map((n) => n.id));
     const links: GraphLink[] = [];
-    entities.forEach((e) => {
+    currentEntities.forEach((e) => {
       e.relationIds.forEach((targetId) => {
         if (nodeIds.has(targetId)) {
           links.push({ source: e.id, target: targetId });
@@ -75,35 +105,47 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
       .attr('class', 'graph-link');
 
     // Nodes
-    const node = g.selectAll('.graph-node')
+    let dragMoved = false;
+    const node = g.selectAll<SVGGElement, GraphNode>('.graph-node')
       .data(nodes)
       .enter().append('g')
       .attr('class', 'graph-node')
       .style('cursor', 'pointer')
       .call(d3.drag<SVGGElement, GraphNode>()
-        .on('start', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.3).restart();
+        .on('start', (_event, d) => {
+          dragMoved = false;
           d.fx = d.x;
           d.fy = d.y;
         })
         .on('drag', (event, d) => {
+          if (!dragMoved && Math.hypot(event.x - d.fx!, event.y - d.fy!) < DRAG_TOLERANCE) return;
+          if (!dragMoved) {
+            dragMoved = true;
+            simulation.alphaTarget(0.3).restart();
+          }
           d.fx = event.x;
           d.fy = event.y;
         })
         .on('end', (event, d) => {
           if (!event.active) simulation.alphaTarget(0);
-          // Keep fx/fy set so node stays in place
-          if (onPositionChange) {
-            onPositionChange(d.id, d.x!, d.y!);
+          if (!dragMoved) {
+            // Treated as a click: select instead of persisting a position
+            onSelectRef.current(d.id);
+            return;
           }
+          // Keep fx/fy set so node stays in place
+          onPositionChangeRef.current?.(d.id, d.x!, d.y!);
         })
       );
+    nodeSelRef.current = node;
+    nodesRef.current = nodes;
 
     // Node circle
     node.append('circle')
-      .attr('r', (d) => d.id === selectedId ? 28 : 22)
+      .attr('class', 'graph-node-circle')
+      .attr('r', (d) => d.id === selectedIdRef.current ? 28 : 22)
       .attr('fill', (d) => ENTITY_TYPE_META[d.type as keyof typeof ENTITY_TYPE_META]?.color || '#94a3b8')
-      .attr('stroke', (d) => d.id === selectedId ? '#fff' : 'none')
+      .attr('stroke', (d) => d.id === selectedIdRef.current ? '#fff' : 'none')
       .attr('stroke-width', 2)
       .attr('opacity', 0.85);
 
@@ -122,7 +164,7 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
 
     // Click handler
     node.on('click', (_event, d) => {
-      onSelect(d.id);
+      onSelectRef.current(d.id);
     });
 
     // Simulation
@@ -140,10 +182,41 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
         node.attr('transform', (d) => `translate(${d.x},${d.y})`);
       });
 
+    simulationRef.current = simulation;
+
     return () => {
       simulation.stop();
+      nodeSelRef.current = null;
+      nodesRef.current = [];
+      simulationRef.current = null;
     };
-  }, [entities, selectedId, onSelect, onPositionChange]);
+  }, [structureKey]);
+
+  // Pin/unpin nodes when saved positions change (e.g. "reset layout" clears them)
+  useEffect(() => {
+    const simulation = simulationRef.current;
+    if (!simulation) return;
+    const positions = new Map(entitiesRef.current.map((e) => [e.id, e.position]));
+    let changed = false;
+    nodesRef.current.forEach((n) => {
+      const p = positions.get(n.id);
+      const fx = p ? p.x : null;
+      const fy = p ? p.y : null;
+      if ((n.fx ?? null) !== fx || (n.fy ?? null) !== fy) {
+        n.fx = fx;
+        n.fy = fy;
+        changed = true;
+      }
+    });
+    if (changed) simulation.alpha(0.6).restart();
+  }, [positionKey]);
+
+  // Highlight the selected node without rebuilding the graph
+  useEffect(() => {
+    nodeSelRef.current?.select<SVGCircleElement>('.graph-node-circle')
+      .attr('r', (d) => d.id === selectedId ? 28 : 22)
+      .attr('stroke', (d) => d.id === selectedId ? '#fff' : 'none');
+  }, [selectedId, structureKey]);
 
   return (
     <svg ref={svgRef} className="w-full h-full" />
