@@ -1,34 +1,50 @@
-# WorldForge · 世界观生成器
+# 🌐 WorldForge
 
-一个交互式的世界观知识图谱工具。用气泡节点和连线构建实体之间的关系网络，支持无限嵌套关联。
+**A bilingual interactive worldbuilding knowledge graph tool.**
 
-## 功能
+[中文](./README.zh-CN.md) | **English**
 
-- **力导向图谱**：D3.js 驱动的交互式节点图，支持缩放、拖拽
-- **实体类型**：人物、势力、地点、功法、事件、物品、境界、自定义
-- **无限关联**：每个字段都可以链接到另一个实体，点击即可跳转
-- **多媒体**：支持图片和音频 URL
-- **云端同步**：GitHub 登录后数据保存到 Supabase，未登录时存 localStorage
-- **示例数据**：内置玄幻世界种子数据（境界体系、青云宗、人物等）
+Build your world's lore as an interconnected node graph. Every entity — characters, factions, locations, techniques — is a bubble, connected by relationships. Click any linked field to dive deeper into the rabbit hole.
 
-## 技术栈
+## ✨ Features
 
-- React + TypeScript + Vite
+- **Force-directed graph** — Powered by D3.js, with zoom, pan, and drag support
+- **8 entity types** — Character, Faction, Location, Technique, Event, Item, Realm, Custom
+- **Infinite nesting** — Every field can link to another entity; click to jump through the chain
+- **Multimedia** — Attach image and audio URLs to any entity
+- **Cloud sync** — Sign in with GitHub to save to Supabase; offline mode uses localStorage
+- **Seed data** — Built-in xianxia world sample (cultivation realms, Qingyun Sect, characters, etc.)
+
+## 🛠 Tech Stack
+
+- React 19 + TypeScript + Vite
 - Tailwind CSS v4
 - D3.js (force-directed graph)
 - Supabase (PostgreSQL + GitHub OAuth)
 
-## 开发
+## 🚀 Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-## 部署
+## 📦 Deployment (GitHub Pages)
 
-1. 在 Supabase 创建项目
-2. 运行 `supabase/schema.sql` 中的 SQL
-3. 在 Supabase 启用 GitHub OAuth
-4. 修改 `src/lib/supabase.ts` 中的 URL 和 Key
-5. `npm run build` 后部署到 GitHub Pages / Netlify
+The repo includes a GitHub Actions workflow that automatically builds and deploys to GitHub Pages on every push to `main`.
+
+### Setup
+
+1. Go to **Settings → Pages → Build and deployment → Source → GitHub Actions**
+2. Push to `main` — the workflow handles the rest
+
+### Manual Supabase Setup (optional, for cloud sync)
+
+1. Create a project on [Supabase](https://supabase.com)
+2. Run `supabase/schema.sql` in the SQL Editor
+3. Enable GitHub OAuth in Authentication → Providers
+4. Update `src/lib/supabase.ts` with your project URL and anon key
+
+## 📄 License
+
+MIT
