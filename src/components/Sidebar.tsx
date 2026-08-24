@@ -149,9 +149,20 @@ export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }
               {confirmingClear ? (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    {t('confirmTypeHint')
-                      .replace('{word}', `「${clearWord}」`)
-                      .replace('{count}', String(entities.length))}
+                    {(() => {
+                      const [before, after] = t('confirmTypeHint')
+                        .replace('{count}', String(entities.length))
+                        .split('{word}');
+                      return (
+                        <>
+                          {before}
+                          <code className="px-1 py-0.5 rounded bg-slate-800 text-red-300 font-semibold">
+                            {clearWord}
+                          </code>
+                          {after}
+                        </>
+                      );
+                    })()}
                   </p>
                   <input
                     autoFocus
