@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Entity, EntityType } from './types';
+import type { Entity, EntityType, WorldProject } from './types';
 import { ENTITY_TYPE_META } from './types';
 import { GraphView } from './components/GraphView';
 import { EntityDetail } from './components/EntityDetail';
 import { EntityEditor } from './components/EntityEditor';
 import { Sidebar } from './components/Sidebar';
 import { supabase, signInWithGitHub, signOut } from './lib/supabase';
-import { loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity } from './lib/dataStore';
-import { SEED_ENTITIES } from './lib/seedData';
+import {
+  loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity, deleteCloudEntitiesByProject,
+  loadLocalProjects, saveLocalProjects, loadCloudProjects, saveCloudProject, deleteCloudProject,
+} from './lib/dataStore';
+import { SEED_ENTITIES, SEED_PROJECT } from './lib/seedData';
 import { useI18n, getTypeLabel } from './lib/i18n';
 
 type AuthState = 'loading' | 'logged_in' | 'logged_out';
@@ -16,6 +19,8 @@ export default function App() {
   const { t } = useI18n();
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [user, setUser] = useState<{ id: string; name: string } | null>(null);
+  const [projects, setProjects] = useState<WorldProject[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
@@ -25,7 +30,9 @@ export default function App() {
   const [showSeedPrompt, setShowSeedPrompt] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Auth init
+  const currentProject = projects.find((p) => p.id === currentProjectId) || null;
+
+  // ─── Auth init ───
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session?.user) {
@@ -53,40 +60,113 @@ export default function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Load entities when auth state changes
+  // ─── Load projects + entities when auth state changes ───
   useEffect(() => {
     if (authState === 'logged_in' && user) {
-      loadCloudEntities(user.id).then((cloud) => {
-        if (cloud.length === 0) {
+      Promise.all([
+        loadCloudProjects(user.id),
+        loadCloudEntities(user.id),
+      ]).then(([cloudProjects, cloudEntities]) => {
+        if (cloudProjects.length === 0) {
           setShowSeedPrompt(true);
         }
-        setEntities(cloud);
+        setProjects(cloudProjects);
+        setEntities(cloudEntities);
+        if (cloudProjects.length > 0) {
+          setCurrentProjectId(cloudProjects[0].id);
+        }
       }).catch(() => {
         setShowSeedPrompt(true);
+        setProjects([]);
         setEntities([]);
       });
     } else if (authState === 'logged_out') {
-      const local = loadLocalEntities();
-      if (local.length === 0) {
+      const localProjects = loadLocalProjects();
+      const localEntities = loadLocalEntities();
+      if (localProjects.length === 0) {
         setShowSeedPrompt(true);
       }
-      setEntities(local);
+      setProjects(localProjects);
+      setEntities(localEntities);
+      if (localProjects.length > 0) {
+        setCurrentProjectId(localProjects[0].id);
+      }
     }
   }, [authState, user]);
 
-  // Save to local storage when not logged in
+  // ─── Save to local storage when not logged in ───
+  useEffect(() => {
+    if (authState === 'logged_out') {
+      saveLocalProjects(projects);
+    }
+  }, [projects, authState]);
+
   useEffect(() => {
     if (authState === 'logged_out') {
       saveLocalEntities(entities);
     }
   }, [entities, authState]);
 
+  // ─── Entities for the current project only ───
+  const projectEntities = entities.filter((e) => e.project_id === currentProjectId);
+
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
   }, []);
 
+  // ─── Project handlers ───
+  const handleCreateProject = (name: string, icon: string, description: string) => {
+    const now = new Date().toISOString();
+    const project: WorldProject = {
+      id: crypto.randomUUID(),
+      name: name.trim() || t('newProject'),
+      icon: icon || '🌐',
+      description,
+      isPublic: false,
+      owner_id: user?.id || 'local',
+      created_at: now,
+      updated_at: now,
+    };
+    setProjects((prev) => [...prev, project]);
+    setCurrentProjectId(project.id);
+    setSelectedId(null);
+    if (authState === 'logged_in') {
+      saveCloudProject(project);
+    }
+  };
+
+  const handleSwitchProject = (projectId: string) => {
+    setCurrentProjectId(projectId);
+    setSelectedId(null);
+    setSidebarOpen(false);
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setEntities((prev) => prev.filter((e) => e.project_id !== projectId));
+    if (currentProjectId === projectId) {
+      const remaining = projects.filter((p) => p.id !== projectId);
+      setCurrentProjectId(remaining.length > 0 ? remaining[0].id : null);
+    }
+    if (authState === 'logged_in') {
+      await deleteCloudEntitiesByProject(projectId);
+      await deleteCloudProject(projectId);
+    }
+  };
+
+  const handleTogglePublic = async (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+    const updated = { ...project, isPublic: !project.isPublic, updated_at: new Date().toISOString() };
+    setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+    if (authState === 'logged_in') {
+      await saveCloudProject(updated);
+    }
+  };
+
+  // ─── Entity handlers ───
   const handleSaveEntity = async (entity: Entity) => {
-    const withOwner = { ...entity, owner_id: user?.id || 'local' };
+    const withOwner = { ...entity, owner_id: user?.id || 'local', project_id: currentProjectId || '' };
     setEntities((prev) => {
       const idx = prev.findIndex((e) => e.id === entity.id);
       if (idx >= 0) {
@@ -115,27 +195,48 @@ export default function App() {
 
   const handleLoadSeed = () => {
     const now = new Date().toISOString();
+    const ownerId = user?.id || 'local';
+    // Create the seed project if it doesn't exist
+    const seedProject: WorldProject = {
+      ...SEED_PROJECT,
+      owner_id: ownerId,
+      created_at: now,
+      updated_at: now,
+    };
+    setProjects((prev) => {
+      if (prev.some((p) => p.id === seedProject.id)) return prev;
+      return [...prev, seedProject];
+    });
+    if (authState === 'logged_in') {
+      saveCloudProject(seedProject);
+    }
+    // Add seed entities (merge — only add ones that don't exist)
     const seed = SEED_ENTITIES.map((e) => ({
       ...e,
-      owner_id: user?.id || 'local',
+      owner_id: ownerId,
+      project_id: seedProject.id,
       created_at: now,
       updated_at: now,
     }));
     setEntities((prev) => {
-      // Merge: only add seed entities whose IDs don't already exist
       const existingIds = new Set(prev.map((e) => e.id));
       return [...prev, ...seed.filter((s) => !existingIds.has(s.id))];
     });
+    setCurrentProjectId(seedProject.id);
     setShowSeedPrompt(false);
   };
 
   const handleNewEntity = () => {
+    if (!currentProjectId) {
+      // Auto-create a default project if none exists
+      handleCreateProject(t('newProject'), '🌐', '');
+    }
     setEditingEntity(null);
     setShowEditor(true);
   };
 
   const handleEditEntity = () => {
-    const entity = entities.find((e) => e.id === selectedId);
+    const entity = projectEntities.find((e) => e.id === selectedId);
     if (entity) {
       setEditingEntity(entity);
       setShowEditor(true);
@@ -149,12 +250,12 @@ export default function App() {
   }, []);
 
   const handleExport = () => {
-    const data = JSON.stringify(entities, null, 2);
+    const data = JSON.stringify(projectEntities, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `worldforge-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `${currentProject?.name || 'worldforge'}-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -170,9 +271,13 @@ export default function App() {
         const imported = data.map((e: Entity) => ({
           ...e,
           owner_id: user?.id || 'local',
+          project_id: currentProjectId || '',
           updated_at: new Date().toISOString(),
         }));
-        setEntities(imported);
+        setEntities((prev) => {
+          const existingIds = new Set(prev.map((e) => e.id));
+          return [...prev, ...imported.filter((e: Entity) => !existingIds.has(e.id))];
+        });
         setShowSeedPrompt(false);
       } catch {
         alert(t('importError'));
@@ -182,14 +287,14 @@ export default function App() {
     e.target.value = '';
   };
 
-  // Filtered entities for graph
-  const filteredEntities = entities.filter((e) => {
+  // ─── Filtered entities for graph (within current project) ───
+  const filteredEntities = projectEntities.filter((e) => {
     if (filterType !== 'all' && e.type !== filterType) return false;
     if (searchQuery && !e.name.includes(searchQuery) && !e.tags.some((t) => t.includes(searchQuery))) return false;
     return true;
   });
 
-  const selectedEntity = entities.find((e) => e.id === selectedId) || null;
+  const selectedEntity = projectEntities.find((e) => e.id === selectedId) || null;
 
   if (authState === 'loading') {
     return (
@@ -205,16 +310,23 @@ export default function App() {
       <Sidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
+        projects={projects}
+        currentProjectId={currentProjectId}
         entities={entities}
+        onCreateProject={handleCreateProject}
+        onSwitchProject={handleSwitchProject}
+        onDeleteProject={handleDeleteProject}
+        onTogglePublic={handleTogglePublic}
         onLoadSeed={handleLoadSeed}
         onResetLayout={() => {
-          setEntities((prev) => prev.map((e) => ({ ...e, position: undefined })));
+          setEntities((prev) => prev.map((e) =>
+            e.project_id === currentProjectId ? { ...e, position: undefined } : e
+          ));
           setSidebarOpen(false);
         }}
         onClearData={() => {
-          if (confirm(t('confirmClear'))) {
-            setEntities([]);
-            setSelectedId(null);
+          if (currentProjectId && confirm(t('confirmDeleteProject'))) {
+            handleDeleteProject(currentProjectId);
             setSidebarOpen(false);
           }
         }}
@@ -230,8 +342,13 @@ export default function App() {
           >
             ☰
           </button>
-          <span className="text-xl">🌐</span>
-          <span className="text-sm font-semibold text-slate-200">{t('appTitle')}</span>
+          <span className="text-xl">{currentProject?.icon || '🌐'}</span>
+          <span className="text-sm font-semibold text-slate-200">
+            {currentProject ? currentProject.name : t('appTitle')}
+          </span>
+          {currentProject?.isPublic && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">🌐 {t('cloudWorld')}</span>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -252,7 +369,7 @@ export default function App() {
           </button>
 
           {/* Export / Import */}
-          {entities.length > 0 && (
+          {projectEntities.length > 0 && (
             <div className="flex items-center gap-1">
               <button
                 onClick={handleExport}
@@ -296,14 +413,12 @@ export default function App() {
           onClick={() => setFilterType('all')}
           className={`text-xs px-2.5 py-1 rounded-lg ${filterType === 'all' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
         >
-          {t('all')} ({entities.length})
+          {t('all')} ({projectEntities.length})
         </button>
         {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((tp) => {
-          const entitiesOfType = entities.filter((e) => e.type === tp);
+          const entitiesOfType = projectEntities.filter((e) => e.type === tp);
           const count = entitiesOfType.length;
           if (count === 0) return null;
-          // For custom type, show the user-defined label when all custom
-          // entities share the same one; otherwise fall back to "自定义 (N种)"
           let label = getTypeLabel(tp, t);
           if (tp === 'custom') {
             const customLabels = [...new Set(entitiesOfType.map((e) => e.customTypeLabel).filter(Boolean))];
@@ -327,7 +442,7 @@ export default function App() {
 
       {/* Main content: graph + detail panel */}
       <div className="flex-1 relative overflow-hidden">
-        {entities.length === 0 ? (
+        {!currentProject ? (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <div className="text-5xl mb-4">🌐</div>
@@ -337,10 +452,10 @@ export default function App() {
               </p>
               <div className="flex gap-3 justify-center">
                 <button
-                  onClick={handleNewEntity}
+                  onClick={() => setSidebarOpen(true)}
                   className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
                 >
-                  {t('createFirst')}
+                  {t('newProject')}
                 </button>
                 {showSeedPrompt && (
                   <button
@@ -350,6 +465,30 @@ export default function App() {
                     {t('loadSeed')}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        ) : projectEntities.length === 0 ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <div className="text-5xl mb-4">{currentProject.icon}</div>
+              <h2 className="text-xl text-slate-200 mb-2">{currentProject.name}</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                {currentProject.description || t('emptyDesc')}
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={handleNewEntity}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
+                >
+                  {t('createFirst')}
+                </button>
+                <button
+                  onClick={handleLoadSeed}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm"
+                >
+                  {t('loadSeed')}
+                </button>
               </div>
             </div>
           </div>
@@ -366,7 +505,7 @@ export default function App() {
         {selectedEntity && (
           <EntityDetail
             entity={selectedEntity}
-            allEntities={entities}
+            allEntities={projectEntities}
             onSelectEntity={handleSelect}
             onClose={() => setSelectedId(null)}
             onEdit={handleEditEntity}
@@ -379,7 +518,7 @@ export default function App() {
         {showEditor && (
           <EntityEditor
             entity={editingEntity}
-            allEntities={entities}
+            allEntities={projectEntities}
             onSave={handleSaveEntity}
             onClose={() => { setShowEditor(false); setEditingEntity(null); }}
             onDelete={handleDeleteEntity}

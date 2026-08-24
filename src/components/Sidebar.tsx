@@ -1,28 +1,53 @@
+import { useState } from 'react';
 import { useI18n, LANGUAGES, type Language } from '../lib/i18n';
-import type { Entity } from '../types';
+import type { Entity, WorldProject } from '../types';
 
 interface SidebarProps {
   open: boolean;
   onToggle: () => void;
+  projects: WorldProject[];
+  currentProjectId: string | null;
   entities: Entity[];
+  onCreateProject: (name: string, icon: string, description: string) => void;
+  onSwitchProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
+  onTogglePublic: (projectId: string) => void;
   onLoadSeed: () => void;
   onResetLayout: () => void;
   onClearData: () => void;
 }
 
-export function Sidebar({ open, onToggle, entities, onLoadSeed, onResetLayout, onClearData }: SidebarProps) {
+export function Sidebar({
+  open, onToggle, projects, currentProjectId, entities,
+  onCreateProject, onSwitchProject, onDeleteProject, onTogglePublic,
+  onLoadSeed, onResetLayout, onClearData,
+}: SidebarProps) {
   const { lang, setLang, t } = useI18n();
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newIcon, setNewIcon] = useState('🌐');
+  const [newDesc, setNewDesc] = useState('');
 
-  const relationCount = entities.reduce((sum, e) => sum + e.relationIds.length, 0);
+  const currentProject = projects.find((p) => p.id === currentProjectId);
+  const currentEntityCount = entities.filter((e) => e.project_id === currentProjectId).length;
+  const currentRelationCount = entities
+    .filter((e) => e.project_id === currentProjectId)
+    .reduce((sum, e) => sum + e.relationIds.length, 0);
+
+  const handleCreate = () => {
+    if (!newName.trim()) return;
+    onCreateProject(newName, newIcon, newDesc);
+    setNewName('');
+    setNewIcon('🌐');
+    setNewDesc('');
+    setShowNewProject(false);
+  };
 
   return (
     <>
       {/* Backdrop */}
       {open && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={onToggle}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={onToggle} />
       )}
 
       {/* Sidebar */}
@@ -32,7 +57,7 @@ export function Sidebar({ open, onToggle, entities, onLoadSeed, onResetLayout, o
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700 sticky top-0 bg-slate-900 z-10">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🌐</span>
             <span className="text-sm font-semibold text-slate-200">WorldForge</span>
@@ -47,7 +72,161 @@ export function Sidebar({ open, onToggle, entities, onLoadSeed, onResetLayout, o
 
         {/* Content */}
         <div className="px-4 py-4 space-y-6">
-          {/* Language */}
+          {/* ─── My Projects ─── */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider flex items-center gap-1.5">
+                📁 {t('myProjects')}
+              </h3>
+              <button
+                onClick={() => setShowNewProject(!showNewProject)}
+                className="text-xs text-indigo-400 hover:text-indigo-300"
+              >
+                + {t('newProject')}
+              </button>
+            </div>
+
+            {/* New project form */}
+            {showNewProject && (
+              <div className="mb-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700 space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    value={newIcon}
+                    onChange={(e) => setNewIcon(e.target.value)}
+                    className="w-10 text-center text-lg bg-slate-800 border border-slate-600 rounded px-1 py-1"
+                    maxLength={2}
+                  />
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder={t('projectNamePlaceholder')}
+                    className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-slate-100 placeholder-slate-500"
+                  />
+                </div>
+                <input
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder={t('projectDescPlaceholder')}
+                  className="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-100 placeholder-slate-500"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCreate}
+                    className="flex-1 text-xs py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white"
+                  >
+                    {t('save')}
+                  </button>
+                  <button
+                    onClick={() => setShowNewProject(false)}
+                    className="flex-1 text-xs py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300"
+                  >
+                    {t('cancel')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Project list */}
+            {projects.length === 0 ? (
+              <p className="text-xs text-slate-500 px-3 py-2">{t('noProjects')}</p>
+            ) : (
+              <div className="space-y-1">
+                {projects.map((p) => {
+                  const count = entities.filter((e) => e.project_id === p.id).length;
+                  const isActive = p.id === currentProjectId;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`group rounded-lg transition-colors ${isActive ? 'bg-indigo-500/15 border border-indigo-500/30' : 'hover:bg-slate-800/50 border border-transparent'}`}
+                    >
+                      <button
+                        onClick={() => onSwitchProject(p.id)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                      >
+                        <span className="text-lg shrink-0">{p.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-slate-200 truncate">{p.name}</div>
+                          <div className="text-[10px] text-slate-500">
+                            {count} {t('entityCount')}
+                            {p.isPublic && <span className="ml-1 text-indigo-400">🌐 {t('cloudWorld')}</span>}
+                          </div>
+                        </div>
+                      </button>
+                      {/* Per-project actions (shown on hover or when active) */}
+                      <div className={`px-3 pb-2 flex gap-2 text-[10px] ${isActive ? '' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`}>
+                        <button
+                          onClick={() => onTogglePublic(p.id)}
+                          className="text-slate-500 hover:text-indigo-400"
+                          title={t('makePublic')}
+                        >
+                          {p.isPublic ? '🔒' : '🌐'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(t('confirmDeleteProject'))) onDeleteProject(p.id);
+                          }}
+                          className="text-slate-500 hover:text-red-400"
+                          title={t('delete')}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ─── Current project stats ─── */}
+          {currentProject && (
+            <div>
+              <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
+                📊 {t('stats')}
+              </h3>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-sm bg-slate-800/50 rounded-lg px-3 py-2">
+                  <span className="text-slate-400">{t('entityCount')}</span>
+                  <span className="text-slate-200 font-medium">{currentEntityCount}</span>
+                </div>
+                <div className="flex justify-between text-sm bg-slate-800/50 rounded-lg px-3 py-2">
+                  <span className="text-slate-400">{t('relationCount')}</span>
+                  <span className="text-slate-200 font-medium">{currentRelationCount}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── Settings ─── */}
+          <div>
+            <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
+              ⚙️ {t('settings')}
+            </h3>
+            <div className="space-y-1.5">
+              <button
+                onClick={onLoadSeed}
+                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+              >
+                📦 {t('loadSeed')}
+              </button>
+              <button
+                onClick={onResetLayout}
+                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+                disabled={!currentProjectId}
+              >
+                🔄 {t('resetLayout')}
+              </button>
+              <button
+                onClick={onClearData}
+                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-red-900/30 text-slate-300 hover:text-red-300 transition-colors"
+                disabled={!currentProjectId}
+              >
+                🗑️ {t('clearData')}
+              </button>
+            </div>
+          </div>
+
+          {/* ─── Language ─── */}
           <div>
             <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
               🌐 {t('language')}
@@ -73,51 +252,7 @@ export function Sidebar({ open, onToggle, entities, onLoadSeed, onResetLayout, o
             </p>
           </div>
 
-          {/* Stats */}
-          <div>
-            <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
-              📊 {t('stats')}
-            </h3>
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-sm bg-slate-800/50 rounded-lg px-3 py-2">
-                <span className="text-slate-400">{t('entityCount')}</span>
-                <span className="text-slate-200 font-medium">{entities.length}</span>
-              </div>
-              <div className="flex justify-between text-sm bg-slate-800/50 rounded-lg px-3 py-2">
-                <span className="text-slate-400">{t('relationCount')}</span>
-                <span className="text-slate-200 font-medium">{relationCount}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Settings */}
-          <div>
-            <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
-              ⚙️ {t('settings')}
-            </h3>
-            <div className="space-y-1.5">
-              <button
-                onClick={onLoadSeed}
-                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
-              >
-                📦 {t('loadSeed')}
-              </button>
-              <button
-                onClick={onResetLayout}
-                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
-              >
-                🔄 {t('resetLayout')}
-              </button>
-              <button
-                onClick={onClearData}
-                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-red-900/30 text-slate-300 hover:text-red-300 transition-colors"
-              >
-                🗑️ {t('clearData')}
-              </button>
-            </div>
-          </div>
-
-          {/* About */}
+          {/* ─── About ─── */}
           <div>
             <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
               ℹ️ {t('about')}

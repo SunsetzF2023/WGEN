@@ -39,6 +39,21 @@ export interface Entity {
   position?: { x: number; y: number };
   /** User who created this entity */
   owner_id: string;
+  /** Project this entity belongs to */
+  project_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A world-building project — a collection of entities */
+export interface WorldProject {
+  id: string;
+  name: string;
+  icon: string; // emoji
+  description: string;
+  /** Whether this project is publicly visible to other users */
+  isPublic: boolean;
+  owner_id: string;
   created_at: string;
   updated_at: string;
 }

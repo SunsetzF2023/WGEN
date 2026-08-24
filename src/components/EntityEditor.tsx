@@ -107,6 +107,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
       fields: fields.filter((f) => f.value.trim() || f.linkedEntityId),
       relationIds,
       owner_id: entity?.owner_id || '',
+      project_id: entity?.project_id || '',
       created_at: entity?.created_at || now,
       updated_at: now,
     };
