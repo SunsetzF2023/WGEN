@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { marked } from 'marked';
 import type { Entity } from '../types';
-import { ENTITY_TYPE_META } from '../types';
+import { ENTITY_TYPE_META, isImageIcon } from '../types';
 import { useI18n, getTypeLabel } from '../lib/i18n';
 
 interface EntityDetailProps {
@@ -49,7 +49,11 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
       <div className="sticky top-0 bg-slate-900 border-b border-slate-700 px-5 py-4 z-10">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-3xl">{entity.icon}</span>
+            {isImageIcon(entity.icon) ? (
+              <img src={entity.icon} alt={entity.name} className="w-12 h-12 rounded-lg object-cover" />
+            ) : (
+              <span className="text-3xl">{entity.icon}</span>
+            )}
             <div>
               <h2 className="text-lg font-semibold text-slate-100">{entity.name}</h2>
               <span
@@ -114,7 +118,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
                     <span className="text-slate-500 min-w-[80px] shrink-0">{field.label}</span>
                     <span className="text-slate-200">
                       {field.value}
-                      {linkedEntity && <span className="text-slate-500 text-xs ml-1.5">→ {linkedEntity.icon} {linkedEntity.name}</span>}
+                      {linkedEntity && <span className="text-slate-500 text-xs ml-1.5">→ {isImageIcon(linkedEntity.icon) ? <img src={linkedEntity.icon} alt="" className="w-3.5 h-3.5 rounded object-cover inline" /> : linkedEntity.icon} {linkedEntity.name}</span>}
                     </span>
                   </div>
                 );
@@ -163,7 +167,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
                     onClick={() => onSelectEntity(rid)}
                     className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
                   >
-                    <span>{rel.icon}</span>
+                    <span>{isImageIcon(rel.icon) ? <img src={rel.icon} alt="" className="w-4 h-4 rounded object-cover inline" /> : rel.icon}</span>
                     <span>{rel.name}</span>
                   </button>
                 );
@@ -185,7 +189,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
                   onClick={() => onSelectEntity(bl.id)}
                   className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
                 >
-                  <span>{bl.icon}</span>
+                  <span>{isImageIcon(bl.icon) ? <img src={bl.icon} alt="" className="w-4 h-4 rounded object-cover inline" /> : bl.icon}</span>
                   <span>{bl.name}</span>
                 </button>
               ))}

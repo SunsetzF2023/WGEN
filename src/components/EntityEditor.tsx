@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { marked } from 'marked';
 import type { Entity, EntityType, EntityField } from '../types';
-import { ENTITY_TYPE_META, FIELD_TEMPLATES } from '../types';
+import { ENTITY_TYPE_META, FIELD_TEMPLATES, isImageIcon } from '../types';
 import { useI18n, getTypeLabel } from '../lib/i18n';
 
 interface EntityEditorProps {
@@ -28,6 +28,21 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
   const [relationIds, setRelationIds] = useState<string[]>(entity?.relationIds || []);
   const [mdPreview, setMdPreview] = useState(false);
   const [customTypeLabel, setCustomTypeLabel] = useState(entity?.customTypeLabel || '');
+  const [iconMode, setIconMode] = useState<'emoji' | 'image'>(() => isImageIcon(entity?.icon || '') ? 'image' : 'emoji');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleIconFile = (file: File) => {
+    if (file.size > 512 * 1024) {
+      alert(t('iconFileTooLarge'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      if (result) setIcon(result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const applyTemplate = (newType: EntityType) => {
     setType(newType);
@@ -97,19 +112,88 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
         <div className="px-6 py-4 space-y-4">
           {/* Name + Icon + Type */}
           <div className="flex gap-3">
-            <input
-              value={icon}
-              onChange={(e) => setIcon(e.target.value)}
-              className="w-14 text-center text-2xl bg-slate-800 border border-slate-600 rounded-lg px-2 py-2"
-              maxLength={2}
-            />
+            {/* Icon picker */}
+            <div className="shrink-0">
+              <div className="w-14 h-14 flex items-center justify-center bg-slate-800 border border-slate-600 rounded-lg overflow-hidden">
+                {iconMode === 'image' && isImageIcon(icon) ? (
+                  <img src={icon} alt="icon" className="w-full h-full object-cover" />
+                ) : (
+                  <input
+                    value={icon}
+                    onChange={(e) => setIcon(e.target.value)}
+                    className="w-full h-full text-center text-2xl bg-transparent text-slate-100 outline-none"
+                    maxLength={2}
+                  />
+                )}
+              </div>
+              <div className="flex mt-1 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => { setIconMode('emoji'); if (isImageIcon(icon)) setIcon('📌'); }}
+                  className={`flex-1 py-0.5 rounded-l ${iconMode === 'emoji' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {t('iconEmoji')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIconMode('image')}
+                  className={`flex-1 py-0.5 rounded-r ${iconMode === 'image' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {t('iconImage')}
+                </button>
+              </div>
+            </div>
+
+            {/* Image URL / upload (only in image mode) */}
+            {iconMode === 'image' && (
+              <div className="flex-1 flex flex-col gap-1.5">
+                <input
+                  value={isImageIcon(icon) ? icon : ''}
+                  onChange={(e) => setIcon(e.target.value)}
+                  placeholder={t('iconUrlPlaceholder')}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 self-start"
+                >
+                  📁 {t('iconUpload')}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleIconFile(file);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Name (full width if emoji mode) */}
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('enterName')}
-              className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500"
+              className={`bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500 ${iconMode === 'image' ? 'hidden' : 'flex-1'}`}
             />
           </div>
+
+          {/* Name input shown below when in image mode */}
+          {iconMode === 'image' && (
+            <div>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('enterName')}
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 placeholder-slate-500"
+              />
+            </div>
+          )}
 
           <div>
             <label className="text-xs text-slate-500 block mb-1">{t('typeLabel')}</label>
@@ -280,7 +364,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
                       : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500'
                   }`}
                 >
-                  {e.icon} {e.name}
+                  {isImageIcon(e.icon) ? <img src={e.icon} alt="" className="w-4 h-4 rounded object-cover inline" /> : e.icon} {e.name}
                 </button>
               ))}
             </div>

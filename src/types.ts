@@ -54,6 +54,11 @@ export const ENTITY_TYPE_META: Record<EntityType, { label: string; icon: string;
   custom: { label: '自定义', icon: '📌', color: '#94a3b8' },
 };
 
+/** Check if an icon string is an image (URL or data URI) rather than an emoji */
+export function isImageIcon(icon: string): boolean {
+  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:');
+}
+
 /** Field templates per entity type — shown when creating a new entity */
 export const FIELD_TEMPLATES: Record<EntityType, { key: string; label: string }[]> = {
   character: [

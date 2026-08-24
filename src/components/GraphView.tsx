@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import type { Entity } from '../types';
-import { ENTITY_TYPE_META } from '../types';
+import { ENTITY_TYPE_META, isImageIcon } from '../types';
 
 interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
@@ -90,6 +90,11 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
     // Container group for zoom/pan
     const g = svg.append('g');
 
+    // Defs for clip paths (circular crop for image icons)
+    const defs = svg.append('defs');
+    defs.append('clipPath').attr('id', 'node-icon-clip')
+      .append('circle').attr('r', 16);
+
     // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.2, 4])
@@ -149,11 +154,26 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
       .attr('stroke-width', 2)
       .attr('opacity', 0.85);
 
-    // Node icon (emoji)
-    node.append('text')
-      .attr('dy', '0.35em')
-      .style('font-size', '16px')
-      .text((d) => d.icon);
+    // Node icon (emoji or image)
+    node.each(function (d) {
+      const g = d3.select(this);
+      if (isImageIcon(d.icon)) {
+        g.append('image')
+          .attr('href', d.icon)
+          .attr('x', -16)
+          .attr('y', -16)
+          .attr('width', 32)
+          .attr('height', 32)
+          .attr('preserveAspectRatio', 'xMidYMid slice')
+          .attr('clip-path', 'url(#node-icon-clip)');
+      } else {
+        g.append('text')
+          .attr('dy', '0.35em')
+          .style('font-size', '16px')
+          .style('text-anchor', 'middle')
+          .text(d.icon);
+      }
+    });
 
     // Node label
     node.append('text')
