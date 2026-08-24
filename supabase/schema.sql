@@ -1,4 +1,5 @@
 -- WorldForge Supabase Schema
+-- Safe to re-run: all policies use drop-if-exists before create
 
 -- ─── Projects ───
 create table if not exists projects (
@@ -12,25 +13,41 @@ create table if not exists projects (
   updated_at timestamptz default now()
 );
 
+-- Add project_id column to entities if it doesn't exist (safe for existing tables)
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_name = 'entities' and column_name = 'project_id'
+  ) then
+    alter table entities add column project_id uuid references projects(id) on delete cascade;
+  end if;
+end $$;
+
 -- RLS for projects
 alter table projects enable row level security;
 
+drop policy if exists "Users can view own projects" on projects;
 create policy "Users can view own projects"
   on projects for select
   using (auth.uid() = owner_id);
 
+drop policy if exists "Anyone can view public projects" on projects;
 create policy "Anyone can view public projects"
   on projects for select
   using (is_public = true);
 
+drop policy if exists "Users can insert own projects" on projects;
 create policy "Users can insert own projects"
   on projects for insert
   with check (auth.uid() = owner_id);
 
+drop policy if exists "Users can update own projects" on projects;
 create policy "Users can update own projects"
   on projects for update
   using (auth.uid() = owner_id);
 
+drop policy if exists "Users can delete own projects" on projects;
 create policy "Users can delete own projects"
   on projects for delete
   using (auth.uid() = owner_id);
@@ -62,10 +79,12 @@ create table if not exists entities (
 -- RLS for entities
 alter table entities enable row level security;
 
+drop policy if exists "Users can view own entities" on entities;
 create policy "Users can view own entities"
   on entities for select
   using (auth.uid() = owner_id);
 
+drop policy if exists "Users can view entities in public projects" on entities;
 create policy "Users can view entities in public projects"
   on entities for select
   using (
@@ -76,14 +95,17 @@ create policy "Users can view entities in public projects"
     )
   );
 
+drop policy if exists "Users can insert own entities" on entities;
 create policy "Users can insert own entities"
   on entities for insert
   with check (auth.uid() = owner_id);
 
+drop policy if exists "Users can update own entities" on entities;
 create policy "Users can update own entities"
   on entities for update
   using (auth.uid() = owner_id);
 
+drop policy if exists "Users can delete own entities" on entities;
 create policy "Users can delete own entities"
   on entities for delete
   using (auth.uid() = owner_id);
