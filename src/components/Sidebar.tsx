@@ -5,11 +5,12 @@ interface SidebarProps {
   open: boolean;
   onToggle: () => void;
   entities: Entity[];
+  onLoadSeed: () => void;
   onResetLayout: () => void;
   onClearData: () => void;
 }
 
-export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }: SidebarProps) {
+export function Sidebar({ open, onToggle, entities, onLoadSeed, onResetLayout, onClearData }: SidebarProps) {
   const { lang, setLang, t } = useI18n();
 
   const relationCount = entities.reduce((sum, e) => sum + e.relationIds.length, 0);
@@ -95,6 +96,12 @@ export function Sidebar({ open, onToggle, entities, onResetLayout, onClearData }
               ⚙️ {t('settings')}
             </h3>
             <div className="space-y-1.5">
+              <button
+                onClick={onLoadSeed}
+                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+              >
+                📦 {t('loadSeed')}
+              </button>
               <button
                 onClick={onResetLayout}
                 className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"

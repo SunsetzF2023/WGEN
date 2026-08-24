@@ -114,13 +114,18 @@ export default function App() {
   };
 
   const handleLoadSeed = () => {
+    const now = new Date().toISOString();
     const seed = SEED_ENTITIES.map((e) => ({
       ...e,
       owner_id: user?.id || 'local',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: now,
+      updated_at: now,
     }));
-    setEntities(seed);
+    setEntities((prev) => {
+      // Merge: only add seed entities whose IDs don't already exist
+      const existingIds = new Set(prev.map((e) => e.id));
+      return [...prev, ...seed.filter((s) => !existingIds.has(s.id))];
+    });
     setShowSeedPrompt(false);
   };
 
@@ -201,6 +206,7 @@ export default function App() {
         open={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         entities={entities}
+        onLoadSeed={handleLoadSeed}
         onResetLayout={() => {
           setEntities((prev) => prev.map((e) => ({ ...e, position: undefined })));
           setSidebarOpen(false);
