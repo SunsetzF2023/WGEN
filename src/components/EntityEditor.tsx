@@ -58,7 +58,7 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
     if (!isEditing || fields.length === 0) {
       const template = FIELD_TEMPLATES[newType];
       if (template.length > 0) {
-        setFields(template.map((t) => ({ key: t.key, label: t.label, value: '' })));
+        setFields(template.map((f) => ({ key: f.key, label: t(f.labelKey), value: '' })));
       }
     }
   };

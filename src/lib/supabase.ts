@@ -14,7 +14,7 @@ export async function signInWithGitHub() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'github',
     options: {
-      redirectTo: window.location.href,
+      redirectTo: window.location.origin + window.location.pathname,
     },
   });
   if (error) console.error('[supabase] GitHub OAuth error:', error);
