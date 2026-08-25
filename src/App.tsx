@@ -47,7 +47,10 @@ export default function App() {
     }).catch(() => {
       setAuthState('logged_out');
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // Ignore TOKEN_REFRESHED — it fires on tab refocus and would trigger
+      // unnecessary data reloads that overwrite local state.
+      if (event === 'TOKEN_REFRESHED') return;
       if (session?.user) {
         const u = session.user;
         const name = (u.user_metadata?.user_name || u.user_metadata?.full_name || 'User') as string;
@@ -211,9 +214,6 @@ export default function App() {
       if (prev.some((p) => p.id === seedProject.id)) return prev;
       return [...prev, seedProject];
     });
-    if (authState === 'logged_in') {
-      saveCloudProject(seedProject);
-    }
     // Add seed entities (merge — only add ones that don't exist)
     const seed = SEED_ENTITIES.map((e) => ({
       ...e,
@@ -222,6 +222,11 @@ export default function App() {
       created_at: now,
       updated_at: now,
     }));
+    if (authState === 'logged_in') {
+      saveCloudProject(seedProject);
+      // Save seed entities to Supabase too — otherwise they vanish on reload
+      seed.forEach((e) => saveCloudEntity(e));
+    }
     setEntities((prev) => {
       const existingIds = new Set(prev.map((e) => e.id));
       return [...prev, ...seed.filter((s) => !existingIds.has(s.id))];
