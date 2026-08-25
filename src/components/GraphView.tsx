@@ -20,12 +20,13 @@ interface GraphViewProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
+  readOnly?: boolean;
 }
 
 /** Distance in px below which a drag gesture counts as a click */
 const DRAG_TOLERANCE = 3;
 
-export function GraphView({ entities, selectedId, onSelect, onPositionChange }: GraphViewProps) {
+export function GraphView({ entities, selectedId, onSelect, onPositionChange, readOnly }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeSelRef = useRef<d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown> | null>(null);
   const nodesRef = useRef<GraphNode[]>([]);
@@ -34,12 +35,14 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
   const selectedIdRef = useRef(selectedId);
   const onSelectRef = useRef(onSelect);
   const onPositionChangeRef = useRef(onPositionChange);
+  const readOnlyRef = useRef(readOnly);
 
   useEffect(() => {
     entitiesRef.current = entities;
     selectedIdRef.current = selectedId;
     onSelectRef.current = onSelect;
     onPositionChangeRef.current = onPositionChange;
+    readOnlyRef.current = readOnly;
   });
 
   /** Only a structural change (nodes, edges, labels) requires rebuilding the graph */
@@ -139,7 +142,9 @@ export function GraphView({ entities, selectedId, onSelect, onPositionChange }: 
             return;
           }
           // Keep fx/fy set so node stays in place
-          onPositionChangeRef.current?.(d.id, d.x!, d.y!);
+          if (!readOnlyRef.current) {
+            onPositionChangeRef.current?.(d.id, d.x!, d.y!);
+          }
         })
       );
     nodeSelRef.current = node;

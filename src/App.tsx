@@ -9,6 +9,7 @@ import { supabase, signInWithGitHub, signOut } from './lib/supabase';
 import {
   loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity, deleteCloudEntitiesByProject,
   loadLocalProjects, saveLocalProjects, loadCloudProjects, saveCloudProject, deleteCloudProject,
+  loadPublicProjects, loadCloudEntitiesByProject,
 } from './lib/dataStore';
 import { SEED_ENTITIES, SEED_PROJECT } from './lib/seedData';
 import { useI18n, getTypeLabel } from './lib/i18n';
@@ -30,6 +31,13 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const loadedUserIdRef = useRef<string | null>(null);
+
+  // ─── Cloud world browsing state ───
+  const [cloudView, setCloudView] = useState<'none' | 'list' | 'browsing'>('none');
+  const [cloudProjects, setCloudProjects] = useState<WorldProject[]>([]);
+  const [cloudEntities, setCloudEntities] = useState<Entity[]>([]);
+  const [browsingCloudProjectId, setBrowsingCloudProjectId] = useState<string | null>(null);
+  const [cloudLoading, setCloudLoading] = useState(false);
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
 
@@ -123,6 +131,46 @@ export default function App() {
       saveLocalEntities(entities);
     }
   }, [entities, authState]);
+
+  // ─── Cloud world handlers ───
+  const handleEnterCloud = async () => {
+    if (!user) return;
+    setCloudView('list');
+    setCloudLoading(true);
+    try {
+      const publicProjects = await loadPublicProjects(user.id);
+      setCloudProjects(publicProjects);
+    } catch (e) {
+      console.error('[cloud] loadPublicProjects failed:', e);
+      setCloudProjects([]);
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const handleBrowseCloudProject = async (projectId: string) => {
+    setCloudView('browsing');
+    setBrowsingCloudProjectId(projectId);
+    setSelectedId(null);
+    setCloudLoading(true);
+    try {
+      const entities = await loadCloudEntitiesByProject(projectId);
+      setCloudEntities(entities);
+    } catch (e) {
+      console.error('[cloud] loadCloudEntitiesByProject failed:', e);
+      setCloudEntities([]);
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const handleExitCloud = () => {
+    setCloudView('none');
+    setBrowsingCloudProjectId(null);
+    setCloudEntities([]);
+    setSelectedId(null);
+    setSidebarOpen(false);
+  };
 
   // ─── Entities for the current project only ───
   const projectEntities = entities.filter((e) => e.project_id === currentProjectId);
@@ -340,8 +388,13 @@ export default function App() {
     e.target.value = '';
   };
 
+  // ─── Determine which entities to show based on cloud view ───
+  const isCloudBrowsing = cloudView === 'browsing' && browsingCloudProjectId;
+  const displayEntities = isCloudBrowsing ? cloudEntities : projectEntities;
+  const browsingProject = isCloudBrowsing ? cloudProjects.find((p) => p.id === browsingCloudProjectId) : null;
+
   // ─── Filtered entities for graph (within current project) ───
-  const filteredEntities = projectEntities.filter((e) => {
+  const filteredEntities = displayEntities.filter((e) => {
     if (filterType !== 'all') {
       if (filterType.startsWith('custom:')) {
         const customLabel = filterType.slice(7);
@@ -352,7 +405,7 @@ export default function App() {
     return true;
   });
 
-  const selectedEntity = projectEntities.find((e) => e.id === selectedId) || null;
+  const selectedEntity = displayEntities.find((e) => e.id === selectedId) || null;
 
   if (authState === 'loading') {
     return (
@@ -387,6 +440,14 @@ export default function App() {
             setSidebarOpen(false);
           }
         }}
+        cloudView={cloudView}
+        cloudProjects={cloudProjects}
+        browsingCloudProjectId={browsingCloudProjectId}
+        onEnterCloud={handleEnterCloud}
+        onBrowseCloudProject={handleBrowseCloudProject}
+        onExitCloud={handleExitCloud}
+        cloudLoading={cloudLoading}
+        isLoggedIn={authState === 'logged_in'}
       />
 
       {/* Top bar */}
@@ -399,12 +460,30 @@ export default function App() {
           >
             ☰
           </button>
-          <span className="text-xl">{currentProject?.icon || '🌐'}</span>
-          <span className="text-sm font-semibold text-slate-200">
-            {currentProject ? currentProject.name : t('appTitle')}
-          </span>
-          {currentProject?.isPublic && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">🌐 {t('cloudWorld')}</span>
+          {isCloudBrowsing ? (
+            <>
+              <span className="text-xl">{browsingProject?.icon || '🌐'}</span>
+              <span className="text-sm font-semibold text-slate-200">
+                {browsingProject?.name || t('cloudWorld')}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">📖 {t('cloudReadOnly')}</span>
+              <button
+                onClick={handleExitCloud}
+                className="text-xs text-slate-400 hover:text-slate-200 ml-2"
+              >
+                ← {t('backToMyProjects')}
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-xl">{currentProject?.icon || '🌐'}</span>
+              <span className="text-sm font-semibold text-slate-200">
+                {currentProject ? currentProject.name : t('appTitle')}
+              </span>
+              {currentProject?.isPublic && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">🌐 {t('cloudWorld')}</span>
+              )}
+            </>
           )}
         </div>
 
@@ -418,15 +497,17 @@ export default function App() {
           />
 
           {/* New entity button */}
-          <button
-            onClick={handleNewEntity}
-            className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
-          >
-            {t('newEntity')}
-          </button>
+          {!isCloudBrowsing && (
+            <button
+              onClick={handleNewEntity}
+              className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+            >
+              {t('newEntity')}
+            </button>
+          )}
 
           {/* Export / Import */}
-          {projectEntities.length > 0 && (
+          {!isCloudBrowsing && projectEntities.length > 0 && (
             <div className="flex items-center gap-1">
               <button
                 onClick={handleExport}
@@ -470,10 +551,10 @@ export default function App() {
           onClick={() => setFilterType('all')}
           className={`text-xs px-2.5 py-1 rounded-lg ${filterType === 'all' ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
         >
-          {t('all')} ({projectEntities.length})
+          {t('all')} ({displayEntities.length})
         </button>
         {(Object.keys(ENTITY_TYPE_META) as EntityType[]).flatMap((tp) => {
-          const entitiesOfType = projectEntities.filter((e) => e.type === tp);
+          const entitiesOfType = displayEntities.filter((e) => e.type === tp);
           const count = entitiesOfType.length;
           if (count === 0) return [];
 
@@ -528,7 +609,7 @@ export default function App() {
               <span className="text-sm">{t('loading')}</span>
             </div>
           </div>
-        ) : !currentProject ? (
+        ) : !isCloudBrowsing && !currentProject ? (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <div className="text-5xl mb-4">🌐</div>
@@ -546,7 +627,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        ) : projectEntities.length === 0 ? (
+        ) : !isCloudBrowsing && currentProject && projectEntities.length === 0 ? (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <div className="text-5xl mb-4">{currentProject.icon}</div>
@@ -569,7 +650,8 @@ export default function App() {
             entities={filteredEntities}
             selectedId={selectedId}
             onSelect={handleSelect}
-            onPositionChange={handlePositionChange}
+            onPositionChange={isCloudBrowsing ? undefined : handlePositionChange}
+            readOnly={!!isCloudBrowsing}
           />
         )}
 
@@ -577,7 +659,7 @@ export default function App() {
         {selectedEntity && (
           <EntityDetail
             entity={selectedEntity}
-            allEntities={projectEntities}
+            allEntities={displayEntities}
             onSelectEntity={handleSelect}
             onClose={() => setSelectedId(null)}
             onEdit={handleEditEntity}
@@ -586,6 +668,7 @@ export default function App() {
             projects={projects}
             currentProjectId={currentProjectId}
             onCopyToProject={handleCopyEntityToProject}
+            readOnly={!!isCloudBrowsing}
           />
         )}
 

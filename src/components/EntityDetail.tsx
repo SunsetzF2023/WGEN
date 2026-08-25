@@ -16,9 +16,10 @@ interface EntityDetailProps {
   projects?: WorldProject[];
   currentProjectId?: string | null;
   onCopyToProject?: (entity: Entity, targetProjectId: string) => void;
+  readOnly?: boolean;
 }
 
-export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn, onTagClick, projects, currentProjectId, onCopyToProject }: EntityDetailProps) {
+export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn, onTagClick, projects, currentProjectId, onCopyToProject, readOnly }: EntityDetailProps) {
   const { t } = useI18n();
   const [showCopyMenu, setShowCopyMenu] = useState(false);
   const [copyTarget, setCopyTarget] = useState<string>('');
@@ -215,7 +216,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
         )}
 
         {/* Edit + Copy buttons */}
-        {isLoggedIn && (
+        {isLoggedIn && !readOnly && (
           <div className="space-y-2 mt-4">
             <button
               onClick={onEdit}

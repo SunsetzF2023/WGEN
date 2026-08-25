@@ -14,12 +14,22 @@ interface SidebarProps {
   onTogglePublic: (projectId: string) => void;
   onResetLayout: () => void;
   onClearData: () => void;
+  cloudView: 'none' | 'list' | 'browsing';
+  cloudProjects: WorldProject[];
+  browsingCloudProjectId: string | null;
+  onEnterCloud: () => void;
+  onBrowseCloudProject: (id: string) => void;
+  onExitCloud: () => void;
+  cloudLoading: boolean;
+  isLoggedIn: boolean;
 }
 
 export function Sidebar({
   open, onToggle, projects, currentProjectId, entities,
   onCreateProject, onSwitchProject, onDeleteProject, onTogglePublic,
   onResetLayout, onClearData,
+  cloudView, cloudProjects, browsingCloudProjectId,
+  onEnterCloud, onBrowseCloudProject, onExitCloud, cloudLoading, isLoggedIn,
 }: SidebarProps) {
   const { lang, setLang, t } = useI18n();
   const [showNewProject, setShowNewProject] = useState(false);
@@ -176,6 +186,81 @@ export function Sidebar({
               </div>
             )}
           </div>
+
+          {/* ─── Cloud World ─── */}
+          {isLoggedIn && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider flex items-center gap-1.5">
+                  🌐 {t('cloudWorld')}
+                </h3>
+                {cloudView === 'none' && (
+                  <button
+                    onClick={onEnterCloud}
+                    className="text-xs text-indigo-400 hover:text-indigo-300"
+                  >
+                    {t('enterCloudWorld')}
+                  </button>
+                )}
+                {cloudView !== 'none' && (
+                  <button
+                    onClick={onExitCloud}
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    ← {t('backToMyProjects')}
+                  </button>
+                )}
+              </div>
+
+              {cloudView === 'list' && (
+                <div className="space-y-1">
+                  {cloudLoading ? (
+                    <p className="text-xs text-slate-500 px-3 py-2">{t('loadingCloud')}</p>
+                  ) : cloudProjects.length === 0 ? (
+                    <p className="text-xs text-slate-500 px-3 py-2">{t('noCloudProjects')}</p>
+                  ) : (
+                    cloudProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => onBrowseCloudProject(p.id)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-left rounded-lg border transition-colors ${
+                          p.id === browsingCloudProjectId
+                            ? 'bg-indigo-500/15 border-indigo-500/30'
+                            : 'hover:bg-slate-800/50 border-transparent'
+                        }`}
+                      >
+                        <span className="text-lg shrink-0">{p.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-slate-200 truncate">{p.name}</div>
+                          {p.description && (
+                            <div className="text-[10px] text-slate-500 truncate">{p.description}</div>
+                          )}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {cloudView === 'browsing' && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-indigo-400 px-3">📖 {t('cloudReadOnly')}</p>
+                  {cloudProjects.filter((p) => p.id !== browsingCloudProjectId).map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => onBrowseCloudProject(p.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left rounded-lg hover:bg-slate-800/50 border border-transparent"
+                    >
+                      <span className="text-lg shrink-0">{p.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-slate-200 truncate">{p.name}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ─── Current project stats ─── */}
           {currentProject && (
