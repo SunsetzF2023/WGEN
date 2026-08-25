@@ -63,3 +63,19 @@ body {
 .markdown-body th, .markdown-body td { border: 1px solid #334155; padding: 0.3em 0.5em; text-align: left; }
 .markdown-body th { background: #1e293b; font-weight: 600; }
 .markdown-body hr { border: none; border-top: 1px solid #334155; margin: 0.8em 0; }
+
+/* Entity links — inline clickable references to other entities */
+.entity-link {
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 3px;
+  padding: 0.5px 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  border-bottom: 1px dashed rgba(129, 140, 248, 0.4);
+}
+.entity-link:hover {
+  background: rgba(99, 102, 241, 0.25);
+  color: #a5b4fc;
+  border-bottom-style: solid;
+}

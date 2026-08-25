@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { marked } from 'marked';
 import type { Entity } from '../types';
 import { ENTITY_TYPE_META, isImageIcon } from '../types';
 import { useI18n, getTypeLabel } from '../lib/i18n';
+import { linkifyHtml } from '../lib/entityLink';
 
 interface EntityDetailProps {
   entity: Entity | null;
@@ -39,9 +40,19 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
   };
 
   const renderMarkdown = (md: string) => {
-    const html = marked.parse(md, { async: false }) as string;
-    return { __html: html };
+    const rawHtml = marked.parse(md, { async: false }) as string;
+    const linkedHtml = linkifyHtml(rawHtml, allEntities, entity.id);
+    return { __html: linkedHtml };
   };
+
+  const handleDescriptionClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const linkEl = target.closest('.entity-link') as HTMLElement | null;
+    if (linkEl) {
+      const id = linkEl.getAttribute('data-entity-id');
+      if (id) onSelectEntity(id);
+    }
+  }, [onSelectEntity]);
 
   return (
     <div className="fixed right-0 top-0 h-full w-[420px] bg-slate-900 border-l border-slate-700 shadow-2xl overflow-y-auto z-50">
@@ -96,6 +107,7 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
             <div
               className="text-sm text-slate-300 leading-relaxed markdown-body"
               dangerouslySetInnerHTML={renderMarkdown(entity.description)}
+              onClick={handleDescriptionClick}
             />
           </div>
         )}
