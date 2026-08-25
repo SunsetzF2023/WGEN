@@ -1,12 +1,20 @@
 {
   "name": "wgen",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.1.0",
   "type": "module",
+  "description": "Interactive worldbuilding knowledge graph tool",
+  "license": "MIT",
+  "author": "SunsetzF2023",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SunsetzF2023/WGEN.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "typecheck": "tsc -b --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
