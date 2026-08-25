@@ -12,7 +12,6 @@ interface SidebarProps {
   onSwitchProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onTogglePublic: (projectId: string) => void;
-  onLoadSeed: () => void;
   onResetLayout: () => void;
   onClearData: () => void;
 }
@@ -20,7 +19,7 @@ interface SidebarProps {
 export function Sidebar({
   open, onToggle, projects, currentProjectId, entities,
   onCreateProject, onSwitchProject, onDeleteProject, onTogglePublic,
-  onLoadSeed, onResetLayout, onClearData,
+  onResetLayout, onClearData,
 }: SidebarProps) {
   const { lang, setLang, t } = useI18n();
   const [showNewProject, setShowNewProject] = useState(false);
@@ -203,12 +202,6 @@ export function Sidebar({
               ⚙️ {t('settings')}
             </h3>
             <div className="space-y-1.5">
-              <button
-                onClick={onLoadSeed}
-                className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
-              >
-                📦 {t('loadSeed')}
-              </button>
               <button
                 onClick={onResetLayout}
                 className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"

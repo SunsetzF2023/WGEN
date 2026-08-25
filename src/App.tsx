@@ -27,7 +27,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
-  const [showSeedPrompt, setShowSeedPrompt] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
 
@@ -71,17 +70,16 @@ export default function App() {
       Promise.all([
         loadCloudProjects(user.id),
         loadCloudEntities(user.id),
-      ]).then(([cloudProjects, cloudEntities]) => {
+      ]).then(async ([cloudProjects, cloudEntities]) => {
         if (cloudProjects.length === 0) {
-          setShowSeedPrompt(true);
-        }
-        setProjects(cloudProjects);
-        setEntities(cloudEntities);
-        if (cloudProjects.length > 0) {
+          // Auto-create seed project + entities for first-time users
+          await handleLoadSeed();
+        } else {
+          setProjects(cloudProjects);
+          setEntities(cloudEntities);
           setCurrentProjectId(cloudProjects[0].id);
         }
       }).catch(() => {
-        setShowSeedPrompt(true);
         setProjects([]);
         setEntities([]);
       }).finally(() => {
@@ -91,11 +89,11 @@ export default function App() {
       const localProjects = loadLocalProjects();
       const localEntities = loadLocalEntities();
       if (localProjects.length === 0) {
-        setShowSeedPrompt(true);
-      }
-      setProjects(localProjects);
-      setEntities(localEntities);
-      if (localProjects.length > 0) {
+        // Auto-create seed project + entities for first-time local users
+        handleLoadSeed();
+      } else {
+        setProjects(localProjects);
+        setEntities(localEntities);
         setCurrentProjectId(localProjects[0].id);
       }
     }
@@ -200,7 +198,7 @@ export default function App() {
     setEditingEntity(null);
   };
 
-  const handleLoadSeed = () => {
+  const handleLoadSeed = async () => {
     const now = new Date().toISOString();
     const ownerId = user?.id || 'local';
 
@@ -236,13 +234,14 @@ export default function App() {
 
     setProjects((prev) => [...prev, seedProject]);
     setEntities((prev) => [...prev, ...seed]);
+    setCurrentProjectId(projectId);
 
     if (authState === 'logged_in') {
-      saveCloudProject(seedProject);
-      seed.forEach((e) => saveCloudEntity(e));
+      // Must await project save before entities — FK constraint requires
+      // project to exist before entities can reference it.
+      await saveCloudProject(seedProject);
+      await Promise.all(seed.map((e) => saveCloudEntity(e)));
     }
-    setCurrentProjectId(projectId);
-    setShowSeedPrompt(false);
   };
 
   const handleNewEntity = () => {
@@ -297,7 +296,6 @@ export default function App() {
           const existingIds = new Set(prev.map((e) => e.id));
           return [...prev, ...imported.filter((e: Entity) => !existingIds.has(e.id))];
         });
-        setShowSeedPrompt(false);
       } catch {
         alert(t('importError'));
       }
@@ -336,7 +334,6 @@ export default function App() {
         onSwitchProject={handleSwitchProject}
         onDeleteProject={handleDeleteProject}
         onTogglePublic={handleTogglePublic}
-        onLoadSeed={handleLoadSeed}
         onResetLayout={() => {
           setEntities((prev) => prev.map((e) =>
             e.project_id === currentProjectId ? { ...e, position: undefined } : e
@@ -486,14 +483,6 @@ export default function App() {
                 >
                   {t('newProject')}
                 </button>
-                {showSeedPrompt && (
-                  <button
-                    onClick={handleLoadSeed}
-                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm"
-                  >
-                    {t('loadSeed')}
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -511,12 +500,6 @@ export default function App() {
                   className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium"
                 >
                   {t('createFirst')}
-                </button>
-                <button
-                  onClick={handleLoadSeed}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm"
-                >
-                  {t('loadSeed')}
                 </button>
               </div>
             </div>
