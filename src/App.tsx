@@ -23,7 +23,7 @@ export default function App() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
+  const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
@@ -342,7 +342,12 @@ export default function App() {
 
   // ─── Filtered entities for graph (within current project) ───
   const filteredEntities = projectEntities.filter((e) => {
-    if (filterType !== 'all' && e.type !== filterType) return false;
+    if (filterType !== 'all') {
+      if (filterType.startsWith('custom:')) {
+        const customLabel = filterType.slice(7);
+        if (e.type !== 'custom' || e.customTypeLabel !== customLabel) return false;
+      } else if (e.type !== filterType) return false;
+    }
     if (searchQuery && !e.name.includes(searchQuery) && !e.tags.some((t) => t.includes(searchQuery))) return false;
     return true;
   });
@@ -467,28 +472,47 @@ export default function App() {
         >
           {t('all')} ({projectEntities.length})
         </button>
-        {(Object.keys(ENTITY_TYPE_META) as EntityType[]).map((tp) => {
+        {(Object.keys(ENTITY_TYPE_META) as EntityType[]).flatMap((tp) => {
           const entitiesOfType = projectEntities.filter((e) => e.type === tp);
           const count = entitiesOfType.length;
-          if (count === 0) return null;
-          let label = getTypeLabel(tp, t);
+          if (count === 0) return [];
+
           if (tp === 'custom') {
-            const customLabels = [...new Set(entitiesOfType.map((e) => e.customTypeLabel).filter(Boolean))];
-            if (customLabels.length === 1) {
-              label = customLabels[0]!;
-            } else if (customLabels.length > 1) {
-              label = `${getTypeLabel(tp, t)} (${customLabels.length})`;
+            const customLabels = [...new Set(entitiesOfType.map((e) => e.customTypeLabel).filter(Boolean))] as string[];
+            if (customLabels.length === 0) {
+              return [(
+                <button
+                  key={tp}
+                  onClick={() => setFilterType(tp)}
+                  className={`text-xs px-2.5 py-1 rounded-lg ${filterType === tp ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {ENTITY_TYPE_META[tp].icon} {getTypeLabel(tp, t)} ({count})
+                </button>
+              )];
             }
+            return customLabels.map((cl) => {
+              const clCount = entitiesOfType.filter((e) => e.customTypeLabel === cl).length;
+              return (
+                <button
+                  key={`custom:${cl}`}
+                  onClick={() => setFilterType(`custom:${cl}`)}
+                  className={`text-xs px-2.5 py-1 rounded-lg ${filterType === `custom:${cl}` ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {ENTITY_TYPE_META[tp].icon} {cl} ({clCount})
+                </button>
+              );
+            });
           }
-          return (
+
+          return [(
             <button
               key={tp}
               onClick={() => setFilterType(tp)}
               className={`text-xs px-2.5 py-1 rounded-lg ${filterType === tp ? 'bg-slate-700 text-slate-200' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              {ENTITY_TYPE_META[tp].icon} {label} ({count})
+              {ENTITY_TYPE_META[tp].icon} {getTypeLabel(tp, t)} ({count})
             </button>
-          );
+          )];
         })}
       </div>
 
