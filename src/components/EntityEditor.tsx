@@ -81,6 +81,18 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
     setFields((prev) => prev.filter((_, idx) => idx !== i));
   };
 
+  const moveField = (from: number, to: number) => {
+    setFields((prev) => {
+      if (to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  };
+
+  const dragIndexRef = useRef<number | null>(null);
+
   const toggleRelation = (id: string) => {
     setRelationIds((prev) =>
       prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
@@ -343,7 +355,20 @@ export function EntityEditor({ entity, allEntities, onSave, onClose, onDelete }:
             </div>
             <div className="space-y-2">
               {fields.map((field, i) => (
-                <div key={i} className="flex gap-2 items-start">
+                <div
+                  key={i}
+                  draggable
+                  onDragStart={() => { dragIndexRef.current = i; }}
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={() => {
+                    if (dragIndexRef.current !== null && dragIndexRef.current !== i) {
+                      moveField(dragIndexRef.current, i);
+                    }
+                    dragIndexRef.current = null;
+                  }}
+                  className="flex gap-2 items-start cursor-grab active:cursor-grabbing"
+                >
+                  <span className="text-slate-600 text-xs select-none pt-2 shrink-0">⠿</span>
                   <input
                     value={field.label}
                     onChange={(e) => updateField(i, 'label', e.target.value)}
