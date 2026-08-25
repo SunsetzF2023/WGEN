@@ -256,6 +256,30 @@ export default function App() {
     }
   };
 
+  const handleCopyEntityToProject = async (entity: Entity, targetProjectId: string) => {
+    const now = new Date().toISOString();
+    const newId = crypto.randomUUID();
+    const copy: Entity = {
+      ...entity,
+      id: newId,
+      owner_id: user?.id || 'local',
+      project_id: targetProjectId,
+      // Relations and field links reference entities in the original project —
+      // clear them since those entities don't exist in the target project.
+      relationIds: [],
+      fields: entity.fields.map((f) => ({ ...f, linkedEntityId: undefined })),
+      position: undefined,
+      created_at: now,
+      updated_at: now,
+    };
+    setEntities((prev) => [...prev, copy]);
+    if (authState === 'logged_in') {
+      await saveCloudEntity(copy);
+    }
+    const targetProject = projects.find((p) => p.id === targetProjectId);
+    alert(`${t('copyToSuccess')} ${targetProject?.name || ''}`);
+  };
+
   const handleNewEntity = () => {
     if (!currentProjectId) {
       // Auto-create a default project if none exists
@@ -535,6 +559,9 @@ export default function App() {
             onEdit={handleEditEntity}
             isLoggedIn={authState === 'logged_in'}
             onTagClick={(tag) => setSearchQuery(tag)}
+            projects={projects}
+            currentProjectId={currentProjectId}
+            onCopyToProject={handleCopyEntityToProject}
           />
         )}
 

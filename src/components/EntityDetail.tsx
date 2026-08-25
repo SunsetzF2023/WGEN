@@ -1,6 +1,6 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { marked } from 'marked';
-import type { Entity } from '../types';
+import type { Entity, WorldProject } from '../types';
 import { ENTITY_TYPE_META, isImageIcon } from '../types';
 import { useI18n, getTypeLabel } from '../lib/i18n';
 import { linkifyHtml } from '../lib/entityLink';
@@ -13,10 +13,15 @@ interface EntityDetailProps {
   onEdit: () => void;
   isLoggedIn: boolean;
   onTagClick?: (tag: string) => void;
+  projects?: WorldProject[];
+  currentProjectId?: string | null;
+  onCopyToProject?: (entity: Entity, targetProjectId: string) => void;
 }
 
-export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn, onTagClick }: EntityDetailProps) {
+export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onEdit, isLoggedIn, onTagClick, projects, currentProjectId, onCopyToProject }: EntityDetailProps) {
   const { t } = useI18n();
+  const [showCopyMenu, setShowCopyMenu] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<string>('');
 
   // Backlinks: entities that link TO this entity
   const backlinks = useMemo(() => {
@@ -209,14 +214,58 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
           </div>
         )}
 
-        {/* Edit button */}
+        {/* Edit + Copy buttons */}
         {isLoggedIn && (
-          <button
-            onClick={onEdit}
-            className="w-full mt-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
-          >
-            {t('editEntity')}
-          </button>
+          <div className="space-y-2 mt-4">
+            <button
+              onClick={onEdit}
+              className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+            >
+              {t('editEntity')}
+            </button>
+            {onCopyToProject && projects && projects.length > 1 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowCopyMenu(!showCopyMenu)}
+                  className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm transition-colors"
+                >
+                  📋 {t('copyTo')}
+                </button>
+                {showCopyMenu && (
+                  <div className="mt-2 p-3 rounded-lg bg-slate-800 border border-slate-600 space-y-2">
+                    <p className="text-xs text-slate-400">{t('copyToTitle')}</p>
+                    <select
+                      value={copyTarget}
+                      onChange={(e) => setCopyTarget(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-200"
+                    >
+                      <option value="">—</option>
+                      {projects
+                        .filter((p) => p.id !== currentProjectId)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.icon} {p.name}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (copyTarget && onCopyToProject) {
+                          onCopyToProject(entity, copyTarget);
+                          setShowCopyMenu(false);
+                          setCopyTarget('');
+                        }
+                      }}
+                      disabled={!copyTarget}
+                      className="w-full py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm"
+                    >
+                      {t('copyToConfirm')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
