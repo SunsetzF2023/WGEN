@@ -203,35 +203,45 @@ export default function App() {
   const handleLoadSeed = () => {
     const now = new Date().toISOString();
     const ownerId = user?.id || 'local';
-    // Create the seed project if it doesn't exist
+
+    // Generate proper UUIDs — Supabase id columns are uuid type, but seed
+    // data uses string IDs like "seed-character-叶逍云". We must remap.
+    const projectId = crypto.randomUUID();
+    const idMap = new Map<string, string>();
+    for (const e of SEED_ENTITIES) {
+      idMap.set(e.id, crypto.randomUUID());
+    }
+
     const seedProject: WorldProject = {
       ...SEED_PROJECT,
+      id: projectId,
       owner_id: ownerId,
       created_at: now,
       updated_at: now,
     };
-    setProjects((prev) => {
-      if (prev.some((p) => p.id === seedProject.id)) return prev;
-      return [...prev, seedProject];
-    });
-    // Add seed entities (merge — only add ones that don't exist)
-    const seed = SEED_ENTITIES.map((e) => ({
+
+    const seed: Entity[] = SEED_ENTITIES.map((e) => ({
       ...e,
+      id: idMap.get(e.id)!,
       owner_id: ownerId,
-      project_id: seedProject.id,
+      project_id: projectId,
+      relationIds: e.relationIds.map((rid) => idMap.get(rid) || rid),
+      fields: e.fields.map((f) => ({
+        ...f,
+        linkedEntityId: f.linkedEntityId ? (idMap.get(f.linkedEntityId) || f.linkedEntityId) : undefined,
+      })),
       created_at: now,
       updated_at: now,
     }));
+
+    setProjects((prev) => [...prev, seedProject]);
+    setEntities((prev) => [...prev, ...seed]);
+
     if (authState === 'logged_in') {
       saveCloudProject(seedProject);
-      // Save seed entities to Supabase too — otherwise they vanish on reload
       seed.forEach((e) => saveCloudEntity(e));
     }
-    setEntities((prev) => {
-      const existingIds = new Set(prev.map((e) => e.id));
-      return [...prev, ...seed.filter((s) => !existingIds.has(s.id))];
-    });
-    setCurrentProjectId(seedProject.id);
+    setCurrentProjectId(projectId);
     setShowSeedPrompt(false);
   };
 
