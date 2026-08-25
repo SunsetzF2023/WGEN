@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Entity, EntityType, WorldProject } from './types';
 import { ENTITY_TYPE_META } from './types';
 import { GraphView } from './components/GraphView';
@@ -29,6 +29,7 @@ export default function App() {
   const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+  const loadedUserIdRef = useRef<string | null>(null);
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
 
@@ -64,8 +65,12 @@ export default function App() {
   }, []);
 
   // ─── Load projects + entities when auth state changes ───
+  // Only reload when the actual user ID changes, not on every user object
+  // reference change (e.g. TOKEN_REFRESHED creates a new object with same id).
   useEffect(() => {
     if (authState === 'logged_in' && user) {
+      if (loadedUserIdRef.current === user.id) return; // already loaded for this user
+      loadedUserIdRef.current = user.id;
       setDataLoading(true);
       Promise.all([
         loadCloudProjects(user.id),
@@ -77,7 +82,10 @@ export default function App() {
         } else {
           setProjects(cloudProjects);
           setEntities(cloudEntities);
-          setCurrentProjectId(cloudProjects[0].id);
+          // Preserve existing selection if still valid, otherwise pick first
+          setCurrentProjectId((prev) =>
+            prev && cloudProjects.some((p) => p.id === prev) ? prev : cloudProjects[0].id
+          );
         }
       }).catch(() => {
         setProjects([]);
@@ -86,6 +94,8 @@ export default function App() {
         setDataLoading(false);
       });
     } else if (authState === 'logged_out') {
+      if (loadedUserIdRef.current === 'local') return; // already loaded local data
+      loadedUserIdRef.current = 'local';
       const localProjects = loadLocalProjects();
       const localEntities = loadLocalEntities();
       if (localProjects.length === 0) {
@@ -94,7 +104,9 @@ export default function App() {
       } else {
         setProjects(localProjects);
         setEntities(localEntities);
-        setCurrentProjectId(localProjects[0].id);
+        setCurrentProjectId((prev) =>
+          prev && localProjects.some((p) => p.id === prev) ? prev : localProjects[0].id
+        );
       }
     }
   }, [authState, user]);
