@@ -80,6 +80,88 @@ function boardToCells(board: number[][]): Cell[][] {
   );
 }
 
+// ─── Ranked mode types & helpers ───
+
+type GameMode = 'menu' | 'casual' | 'matching' | 'ranked' | 'result' | 'leaderboard';
+
+type MatchRecord = {
+  date: number;
+  difficulty: Difficulty;
+  playerTime: number;
+  aiName: string;
+  aiTime: number;
+  aiAvatar: string;
+  win: boolean;
+  starsChange: number;
+};
+
+type RankTier = {
+  name: string;
+  icon: string;
+  minStars: number;
+  color: string;
+};
+
+const RANK_TIERS: RankTier[] = [
+  { name: 'bronze',   icon: '🥉', minStars: 0,  color: 'text-amber-600' },
+  { name: 'silver',   icon: '🥈', minStars: 10, color: 'text-slate-300' },
+  { name: 'gold',     icon: '🥇', minStars: 20, color: 'text-yellow-400' },
+  { name: 'platinum', icon: '💎', minStars: 30, color: 'text-cyan-300' },
+  { name: 'diamond',  icon: '💠', minStars: 40, color: 'text-fuchsia-400' },
+];
+
+function getRankTier(stars: number): RankTier {
+  let tier = RANK_TIERS[0];
+  for (const t of RANK_TIERS) {
+    if (stars >= t.minStars) tier = t;
+  }
+  return tier;
+}
+
+function getNextTier(stars: number): RankTier | null {
+  for (const t of RANK_TIERS) {
+    if (t.minStars > stars) return t;
+  }
+  return null;
+}
+
+const AI_NAMES = [
+  ' SudokuMaster', '数独侠客', 'PuzzleKing', '逻辑之神', 'GridWarrior',
+  '数字忍者', 'BrainStorm', '九宫格之主', 'NumberCrunch', '推理大师',
+  'ZenSudoku', '棋圣传人', 'LogicFlow', '静心解题', 'QuantumMind',
+  '纵横交错', 'ClearMind', '静水流深', 'SwiftSolver', '数字猎手',
+];
+
+const AI_AVATARS = ['🤖', '👾', '🦾', '🧠', '⚡', '🎯', '🔮', '🎭', '🦊', '🐉'];
+
+function generateAIOpponent(difficulty: Difficulty): { name: string; avatar: string; time: number } {
+  const name = AI_NAMES[Math.floor(Math.random() * AI_NAMES.length)];
+  const avatar = AI_AVATARS[Math.floor(Math.random() * AI_AVATARS.length)];
+  // AI time ranges by difficulty (in seconds)
+  const ranges: Record<Difficulty, [number, number]> = {
+    easy: [90, 300],
+    medium: [180, 600],
+    hard: [360, 1200],
+  };
+  const [min, max] = ranges[difficulty];
+  const time = Math.floor(min + Math.random() * (max - min));
+  return { name, avatar, time };
+}
+
+function loadRankData(): { stars: number; history: MatchRecord[] } {
+  try {
+    const raw = localStorage.getItem('sudoku_rank');
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { stars: 0, history: [] };
+}
+
+function saveRankData(data: { stars: number; history: MatchRecord[] }) {
+  try {
+    localStorage.setItem('sudoku_rank', JSON.stringify(data));
+  } catch { /* ignore */ }
+}
+
 // ─── Component ───
 
 export function Sudoku({ onExit }: { onExit: () => void }) {
@@ -94,6 +176,14 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
   const [timer, setTimer] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
 
+  // ─── Ranked mode state ───
+  const [mode, setMode] = useState<GameMode>('menu');
+  const [rankStars, setRankStars] = useState(0);
+  const [matchHistory, setMatchHistory] = useState<MatchRecord[]>([]);
+  const [aiOpponent, setAiOpponent] = useState<{ name: string; avatar: string; time: number } | null>(null);
+  const [matchResult, setMatchResult] = useState<{ win: boolean; playerTime: number; aiTime: number; starsChange: number } | null>(null);
+  const [matchDifficulty, setMatchDifficulty] = useState<Difficulty>('easy');
+
   const newGame = useCallback((diff: Difficulty) => {
     const { puzzle, solution: sol } = generatePuzzle(diff);
     setCells(boardToCells(puzzle));
@@ -106,8 +196,10 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
   }, []);
 
   useEffect(() => {
-    newGame('easy');
-  }, [newGame]);
+    const data = loadRankData();
+    setRankStars(data.stars);
+    setMatchHistory(data.history);
+  }, []);
 
   useEffect(() => {
     if (!timerRunning) return;
@@ -200,7 +292,50 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
       setCompleted(true);
       setTimerRunning(false);
       setErrors(new Set());
+
+      // Handle ranked mode completion
+      if (mode === 'ranked' && aiOpponent) {
+        const playerTime = timer;
+        const win = playerTime <= aiOpponent.time;
+        const starsChange = win ? 2 : -1;
+        const newStars = Math.max(0, rankStars + starsChange);
+        const record: MatchRecord = {
+          date: Date.now(),
+          difficulty: matchDifficulty,
+          playerTime,
+          aiName: aiOpponent.name,
+          aiTime: aiOpponent.time,
+          aiAvatar: aiOpponent.avatar,
+          win,
+          starsChange,
+        };
+        const newHistory = [record, ...matchHistory].slice(0, 50);
+        setRankStars(newStars);
+        setMatchHistory(newHistory);
+        saveRankData({ stars: newStars, history: newHistory });
+        setMatchResult({ win, playerTime, aiTime: aiOpponent.time, starsChange });
+        setMode('result');
+      }
     }
+  };
+
+  const startCasual = (diff: Difficulty) => {
+    setDifficulty(diff);
+    newGame(diff);
+    setMode('casual');
+  };
+
+  const startMatching = (diff: Difficulty) => {
+    setMatchDifficulty(diff);
+    setMode('matching');
+    // Simulate matchmaking delay
+    setTimeout(() => {
+      const ai = generateAIOpponent(diff);
+      setAiOpponent(ai);
+      setDifficulty(diff);
+      newGame(diff);
+      setMode('ranked');
+    }, 2000 + Math.random() * 2000);
   };
 
   const handleErase = () => {
@@ -271,36 +406,305 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
   const relatedCells = selected ? getRelatedCells(selected[0], selected[1]) : new Set<string>();
   const selectedValue = selected ? cells[selected[0]][selected[1]].value : 0;
 
+  const tier = getRankTier(rankStars);
+  const nextTier = getNextTier(rankStars);
+
+  // ─── Menu screen ───
+  if (mode === 'menu') {
+    return (
+      <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
+        <div className="w-full max-w-md flex items-center justify-between mb-6">
+          <button onClick={onExit} className="text-sm text-slate-400 hover:text-slate-200">
+            ← {t('backToApp')}
+          </button>
+          <h1 className="text-lg font-bold text-slate-200">🔢 {t('sudokuTitle')}</h1>
+          <span className="w-16" />
+        </div>
+
+        {/* Rank display */}
+        <div className="w-full max-w-sm bg-slate-900 rounded-xl border border-slate-700 p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{tier.icon}</span>
+              <div>
+                <p className={`text-sm font-bold ${tier.color}`}>{t(`sudokuRank_${tier.name}`)}</p>
+                <p className="text-xs text-slate-500">⭐ {rankStars} {t('sudokuStars')}</p>
+              </div>
+            </div>
+            {nextTier && (
+              <div className="text-right">
+                <p className="text-xs text-slate-500">{nextTier.icon} {t(`sudokuRank_${nextTier.name}`)}</p>
+                <p className="text-[10px] text-slate-600">{nextTier.minStars - rankStars} ⭐ →</p>
+              </div>
+            )}
+          </div>
+          {/* Progress bar */}
+          <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full ${tier.color.replace('text-', 'bg-')}`}
+              style={{
+                width: nextTier
+                  ? `${((rankStars - tier.minStars) / (nextTier.minStars - tier.minStars)) * 100}%`
+                  : '100%',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Mode buttons */}
+        <div className="w-full max-w-sm space-y-3">
+          <button
+            onClick={() => startCasual(difficulty)}
+            className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center justify-between transition-colors"
+          >
+            <span>🎮 {t('sudokuCasual')}</span>
+            <span className="text-xs text-indigo-200">{t('sudokuCasualDesc')}</span>
+          </button>
+          <button
+            onClick={() => startMatching(difficulty)}
+            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white font-medium flex items-center justify-between transition-colors"
+          >
+            <span>⚔️ {t('sudokuRanked')}</span>
+            <span className="text-xs text-indigo-200">{t('sudokuRankedDesc')}</span>
+          </button>
+          <button
+            onClick={() => setMode('leaderboard')}
+            className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 font-medium flex items-center justify-between transition-colors"
+          >
+            <span>🏆 {t('sudokuLeaderboard')}</span>
+            <span className="text-xs text-slate-500">{matchHistory.length} {t('sudokuMatches')}</span>
+          </button>
+        </div>
+
+        {/* Difficulty selector for menu */}
+        <div className="w-full max-w-sm mt-6">
+          <p className="text-xs text-slate-500 mb-2">{t('sudokuSelectDiff')}</p>
+          <div className="flex gap-2">
+            {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDifficulty(d)}
+                className={`flex-1 text-xs py-2 rounded-lg transition-colors ${
+                  difficulty === d
+                    ? 'bg-indigo-600 text-white font-medium'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t(`sudokuDiff_${d}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Matching screen ───
+  if (mode === 'matching') {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 px-4">
+        <div className="text-center">
+          <div className="text-5xl mb-4 animate-pulse">⚔️</div>
+          <p className="text-lg font-bold text-slate-200 mb-2">{t('sudokuMatching')}</p>
+          <p className="text-sm text-slate-500 mb-6">{t(`sudokuDiff_${matchDifficulty}`)}</p>
+          <div className="flex gap-2 justify-center">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce"
+                style={{ animationDelay: `${i * 150}ms` }}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-slate-600 mt-6">{t('sudokuSearching')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Match result screen ───
+  if (mode === 'result' && matchResult) {
+    const win = matchResult.win;
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="text-6xl mb-4">{win ? '🎉' : '😅'}</div>
+          <p className={`text-2xl font-bold mb-2 ${win ? 'text-yellow-400' : 'text-slate-400'}`}>
+            {win ? t('sudokuVictory') : t('sudokuDefeat')}
+          </p>
+          <p className="text-sm text-slate-500 mb-6">
+            {matchResult.starsChange > 0 ? `+${matchResult.starsChange}` : matchResult.starsChange} ⭐
+          </p>
+
+          {/* Score comparison */}
+          <div className="bg-slate-900 rounded-xl border border-slate-700 p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-center flex-1">
+                <div className="text-2xl mb-1">🧑</div>
+                <p className="text-xs text-slate-500 mb-1">{t('sudokuYou')}</p>
+                <p className={`text-lg font-bold font-mono ${win ? 'text-yellow-400' : 'text-slate-300'}`}>
+                  {formatTime(matchResult.playerTime)}
+                </p>
+              </div>
+              <div className="text-slate-600 text-lg px-2">vs</div>
+              <div className="text-center flex-1">
+                <div className="text-2xl mb-1">{aiOpponent?.avatar || '🤖'}</div>
+                <p className="text-xs text-slate-500 mb-1">{aiOpponent?.name || 'AI'}</p>
+                <p className={`text-lg font-bold font-mono ${!win ? 'text-yellow-400' : 'text-slate-300'}`}>
+                  {formatTime(matchResult.aiTime)}
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-slate-700 pt-3">
+              <p className="text-xs text-slate-500">{t('sudokuCurrentRank')}</p>
+              <p className={`text-sm font-bold ${tier.color}`}>
+                {tier.icon} {t(`sudokuRank_${tier.name}`)} · ⭐ {rankStars}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => startMatching(matchDifficulty)}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white text-sm font-medium"
+            >
+              ⚔️ {t('sudokuPlayAgain')}
+            </button>
+            <button
+              onClick={() => setMode('menu')}
+              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-sm font-medium"
+            >
+              ← {t('sudokuBackMenu')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Leaderboard screen ───
+  if (mode === 'leaderboard') {
+    const sorted = [...matchHistory].sort((a, b) => a.playerTime - b.playerTime);
+    return (
+      <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
+        <div className="w-full max-w-md flex items-center justify-between mb-4">
+          <button onClick={() => setMode('menu')} className="text-sm text-slate-400 hover:text-slate-200">
+            ← {t('sudokuBackMenu')}
+          </button>
+          <h1 className="text-lg font-bold text-slate-200">🏆 {t('sudokuLeaderboard')}</h1>
+          <span className="w-16" />
+        </div>
+
+        {/* Rank summary */}
+        <div className="w-full max-w-md bg-slate-900 rounded-xl border border-slate-700 p-4 mb-4">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{tier.icon}</span>
+            <div>
+              <p className={`text-sm font-bold ${tier.color}`}>{t(`sudokuRank_${tier.name}`)}</p>
+              <p className="text-xs text-slate-500">⭐ {rankStars} {t('sudokuStars')} · {matchHistory.filter(m => m.win).length}W {matchHistory.filter(m => !m.win).length}L</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Match history */}
+        {sorted.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3">📋</div>
+            <p className="text-sm text-slate-500">{t('sudokuNoMatches')}</p>
+          </div>
+        ) : (
+          <div className="w-full max-w-md space-y-2">
+            <p className="text-xs text-slate-500 mb-2">{t('sudokuBestTimes')}</p>
+            {sorted.map((m, i) => (
+              <div
+                key={m.date}
+                className={`flex items-center gap-3 p-3 rounded-lg border ${
+                  m.win
+                    ? 'bg-yellow-500/5 border-yellow-500/20'
+                    : 'bg-slate-900 border-slate-700'
+                }`}
+              >
+                <span className="text-sm font-bold text-slate-500 w-6">#{i + 1}</span>
+                <span className="text-lg">{m.win ? '🏆' : '💀'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-400">
+                    {m.aiAvatar} {m.aiName}
+                  </p>
+                  <p className="text-[10px] text-slate-600">
+                    {t(`sudokuDiff_${m.difficulty}`)} · {new Date(m.date).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-mono font-bold text-slate-200">{formatTime(m.playerTime)}</p>
+                  <p className={`text-[10px] ${m.starsChange > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {m.starsChange > 0 ? '+' : ''}{m.starsChange} ⭐
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Game screen (casual or ranked) ───
+  const isRanked = mode === 'ranked';
   return (
     <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
       {/* Header */}
-      <div className="w-full max-w-md flex items-center justify-between mb-4">
+      <div className="w-full max-w-md flex items-center justify-between mb-3">
         <button
-          onClick={onExit}
+          onClick={() => setMode('menu')}
           className="text-sm text-slate-400 hover:text-slate-200"
         >
-          ← {t('backToApp')}
+          ← {t('sudokuBackMenu')}
         </button>
-        <h1 className="text-lg font-bold text-slate-200">🔢 {t('sudokuTitle')}</h1>
+        <h1 className="text-lg font-bold text-slate-200">
+          {isRanked ? '⚔️' : '🎮'} {t('sudokuTitle')}
+        </h1>
         <span className="text-sm text-slate-400 font-mono">{formatTime(timer)}</span>
       </div>
 
-      {/* Difficulty selector */}
-      <div className="flex gap-2 mb-4">
-        {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-          <button
-            key={d}
-            onClick={() => { setDifficulty(d); newGame(d); }}
-            className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
-              difficulty === d
-                ? 'bg-indigo-600 text-white font-medium'
-                : 'bg-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {t(`sudokuDiff_${d}`)}
-          </button>
-        ))}
-      </div>
+      {/* Ranked match info bar */}
+      {isRanked && aiOpponent && (
+        <div className="w-full max-w-md flex items-center justify-between bg-slate-900 rounded-lg border border-slate-700 px-3 py-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🧑</span>
+            <div>
+              <p className="text-xs text-slate-500">{t('sudokuYou')}</p>
+              <p className="text-xs font-mono text-slate-300">{formatTime(timer)}</p>
+            </div>
+          </div>
+          <span className="text-xs text-slate-600">vs</span>
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-xs text-slate-500">{aiOpponent.name}</p>
+              <p className="text-xs font-mono text-slate-400">{t('sudokuAITime')}: {formatTime(aiOpponent.time)}</p>
+            </div>
+            <span className="text-lg">{aiOpponent.avatar}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Difficulty selector (casual only) */}
+      {!isRanked && (
+        <div className="flex gap-2 mb-3">
+          {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+            <button
+              key={d}
+              onClick={() => { setDifficulty(d); newGame(d); }}
+              className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                difficulty === d
+                  ? 'bg-indigo-600 text-white font-medium'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t(`sudokuDiff_${d}`)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Sudoku board */}
       <div className="relative">
@@ -347,8 +751,8 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
           )}
         </div>
 
-        {/* Win overlay */}
-        {completed && (
+        {/* Win overlay (casual only — ranked goes to result screen) */}
+        {completed && !isRanked && (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 rounded-lg">
             <div className="text-center">
               <div className="text-4xl mb-2">🎉</div>
@@ -405,12 +809,14 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
         >
           💡 {t('sudokuHint')}
         </button>
-        <button
-          onClick={() => newGame(difficulty)}
-          className="text-xs px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          🔄 {t('sudokuNewGame')}
-        </button>
+        {!isRanked && (
+          <button
+            onClick={() => newGame(difficulty)}
+            className="text-xs px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            🔄 {t('sudokuNewGame')}
+          </button>
+        )}
       </div>
 
       <p className="text-xs text-slate-600 mt-3 text-center max-w-md">
