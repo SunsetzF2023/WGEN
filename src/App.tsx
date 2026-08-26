@@ -5,6 +5,7 @@ import { GraphView } from './components/GraphView';
 import { EntityDetail } from './components/EntityDetail';
 import { EntityEditor } from './components/EntityEditor';
 import { Sidebar } from './components/Sidebar';
+import { Sudoku } from './components/Sudoku';
 import { supabase, signInWithGitHub, signOut } from './lib/supabase';
 import {
   loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity, deleteCloudEntitiesByProject,
@@ -38,6 +39,7 @@ export default function App() {
   const [cloudEntities, setCloudEntities] = useState<Entity[]>([]);
   const [browsingCloudProjectId, setBrowsingCloudProjectId] = useState<string | null>(null);
   const [cloudLoading, setCloudLoading] = useState(false);
+  const [gameView, setGameView] = useState<string | null>(null);
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
 
@@ -448,6 +450,7 @@ export default function App() {
         onExitCloud={handleExitCloud}
         cloudLoading={cloudLoading}
         isLoggedIn={authState === 'logged_in'}
+        onPlayGame={(game) => setGameView(game)}
       />
 
       {/* Top bar */}
@@ -546,6 +549,7 @@ export default function App() {
       </header>
 
       {/* Filter bar */}
+      {!gameView && (
       <div className="flex items-center gap-2 px-4 py-1.5 bg-slate-900/50 border-b border-slate-800 shrink-0">
         <button
           onClick={() => setFilterType('all')}
@@ -596,10 +600,13 @@ export default function App() {
           )];
         })}
       </div>
+      )}
 
       {/* Main content: graph + detail panel */}
       <div className="flex-1 relative overflow-hidden">
-        {dataLoading ? (
+        {gameView === 'sudoku' ? (
+          <Sudoku onExit={() => setGameView(null)} />
+        ) : dataLoading ? (
           <div className="w-full h-full flex items-center justify-center text-slate-400">
             <div className="flex items-center gap-2">
               <svg className="animate-spin h-5 w-5 text-slate-500" viewBox="0 0 24 24">

@@ -22,6 +22,7 @@ interface SidebarProps {
   onExitCloud: () => void;
   cloudLoading: boolean;
   isLoggedIn: boolean;
+  onPlayGame: (game: string) => void;
 }
 
 export function Sidebar({
@@ -30,6 +31,7 @@ export function Sidebar({
   onResetLayout, onClearData,
   cloudView, cloudProjects, browsingCloudProjectId,
   onEnterCloud, onBrowseCloudProject, onExitCloud, cloudLoading, isLoggedIn,
+  onPlayGame,
 }: SidebarProps) {
   const { lang, setLang, t } = useI18n();
   const [showNewProject, setShowNewProject] = useState(false);
@@ -280,6 +282,19 @@ export function Sidebar({
               </div>
             </div>
           )}
+
+          {/* ─── Fun Games ─── */}
+          <div>
+            <h3 className="text-xs uppercase text-slate-500 font-semibold tracking-wider mb-2 flex items-center gap-1.5">
+              🎮 {t('funGames')}
+            </h3>
+            <button
+              onClick={() => { onPlayGame('sudoku'); onToggle(); }}
+              className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+            >
+              🔢 {t('sudokuTitle')}
+            </button>
+          </div>
 
           {/* ─── Settings ─── */}
           <div>
