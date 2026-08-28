@@ -300,6 +300,12 @@ export function Sidebar({
             >
               ⚫ {t('gomokuTitle')}
             </button>
+            <button
+              onClick={() => { onPlayGame('flightchess'); onToggle(); }}
+              className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+            >
+              ✈️ {t('fcTitle')}
+            </button>
           </div>
 
           {/* ─── Settings ─── */}
