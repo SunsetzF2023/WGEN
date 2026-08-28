@@ -24,6 +24,15 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
   const [showCopyMenu, setShowCopyMenu] = useState(false);
   const [copyTarget, setCopyTarget] = useState<string>('');
 
+  const handleDescriptionClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const linkEl = target.closest('.entity-link') as HTMLElement | null;
+    if (linkEl) {
+      const id = linkEl.getAttribute('data-entity-id');
+      if (id) onSelectEntity(id);
+    }
+  }, [onSelectEntity]);
+
   // Backlinks: entities that link TO this entity
   const backlinks = useMemo(() => {
     if (!entity) return [];
@@ -50,15 +59,6 @@ export function EntityDetail({ entity, allEntities, onSelectEntity, onClose, onE
     const linkedHtml = linkifyHtml(rawHtml, allEntities, entity.id);
     return { __html: linkedHtml };
   };
-
-  const handleDescriptionClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const linkEl = target.closest('.entity-link') as HTMLElement | null;
-    if (linkEl) {
-      const id = linkEl.getAttribute('data-entity-id');
-      if (id) onSelectEntity(id);
-    }
-  }, [onSelectEntity]);
 
   return (
     <div className="fixed right-0 top-0 h-full w-[420px] bg-slate-900 border-l border-slate-700 shadow-2xl overflow-y-auto z-50">

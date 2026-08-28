@@ -44,6 +44,49 @@ export default function App() {
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
 
+  // ─── Seed data loader (defined before effects that use it) ───
+  const handleLoadSeed = useCallback(async () => {
+    const now = new Date().toISOString();
+    const ownerId = user?.id || 'local';
+
+    const projectId = crypto.randomUUID();
+    const idMap = new Map<string, string>();
+    for (const e of SEED_ENTITIES) {
+      idMap.set(e.id, crypto.randomUUID());
+    }
+
+    const seedProject: WorldProject = {
+      ...SEED_PROJECT,
+      id: projectId,
+      owner_id: ownerId,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const seed: Entity[] = SEED_ENTITIES.map((e) => ({
+      ...e,
+      id: idMap.get(e.id)!,
+      owner_id: ownerId,
+      project_id: projectId,
+      relationIds: e.relationIds.map((rid) => idMap.get(rid) || rid),
+      fields: e.fields.map((f) => ({
+        ...f,
+        linkedEntityId: f.linkedEntityId ? (idMap.get(f.linkedEntityId) || f.linkedEntityId) : undefined,
+      })),
+      created_at: now,
+      updated_at: now,
+    }));
+
+    setProjects((prev) => [...prev, seedProject]);
+    setEntities((prev) => [...prev, ...seed]);
+    setCurrentProjectId(projectId);
+
+    if (authState === 'logged_in') {
+      await saveCloudProject(seedProject);
+      await Promise.all(seed.map((e) => saveCloudEntity(e)));
+    }
+  }, [user?.id, authState]);
+
   // ─── Auth init ───
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -120,7 +163,7 @@ export default function App() {
         );
       }
     }
-  }, [authState, user]);
+  }, [authState, user, handleLoadSeed]);
 
   // ─── Save to local storage when not logged in ───
   useEffect(() => {
@@ -259,52 +302,6 @@ export default function App() {
     }
     setShowEditor(false);
     setEditingEntity(null);
-  };
-
-  const handleLoadSeed = async () => {
-    const now = new Date().toISOString();
-    const ownerId = user?.id || 'local';
-
-    // Generate proper UUIDs — Supabase id columns are uuid type, but seed
-    // data uses string IDs like "seed-character-叶逍云". We must remap.
-    const projectId = crypto.randomUUID();
-    const idMap = new Map<string, string>();
-    for (const e of SEED_ENTITIES) {
-      idMap.set(e.id, crypto.randomUUID());
-    }
-
-    const seedProject: WorldProject = {
-      ...SEED_PROJECT,
-      id: projectId,
-      owner_id: ownerId,
-      created_at: now,
-      updated_at: now,
-    };
-
-    const seed: Entity[] = SEED_ENTITIES.map((e) => ({
-      ...e,
-      id: idMap.get(e.id)!,
-      owner_id: ownerId,
-      project_id: projectId,
-      relationIds: e.relationIds.map((rid) => idMap.get(rid) || rid),
-      fields: e.fields.map((f) => ({
-        ...f,
-        linkedEntityId: f.linkedEntityId ? (idMap.get(f.linkedEntityId) || f.linkedEntityId) : undefined,
-      })),
-      created_at: now,
-      updated_at: now,
-    }));
-
-    setProjects((prev) => [...prev, seedProject]);
-    setEntities((prev) => [...prev, ...seed]);
-    setCurrentProjectId(projectId);
-
-    if (authState === 'logged_in') {
-      // Must await project save before entities — FK constraint requires
-      // project to exist before entities can reference it.
-      await saveCloudProject(seedProject);
-      await Promise.all(seed.map((e) => saveCloudEntity(e)));
-    }
   };
 
   const handleCopyEntityToProject = async (entity: Entity, targetProjectId: string) => {

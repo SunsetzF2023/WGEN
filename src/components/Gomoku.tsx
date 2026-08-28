@@ -60,7 +60,13 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
   const [puzzleIndex, setPuzzleIndex] = useState(0);
   const [puzzleSolved, setPuzzleSolved] = useState(false);
   const [puzzleError, setPuzzleError] = useState(false);
-  const [solvedPuzzles, setSolvedPuzzles] = useState<Set<number>>(new Set());
+  const [solvedPuzzles, setSolvedPuzzles] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem('gomoku_solved');
+      if (raw) return new Set(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return new Set();
+  });
   const [showHint, setShowHint] = useState(false);
   const currentPuzzle: Puzzle | null = GOMOKU_PUZZLES[puzzleIndex] || null;
 
@@ -71,14 +77,6 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
   const [pvpError, setPvpError] = useState('');
   const [opponentMove, setOpponentMove] = useState<[number, number] | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
-  // Load solved puzzles from localStorage
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('gomoku_solved');
-      if (raw) setSolvedPuzzles(new Set(JSON.parse(raw)));
-    } catch { /* ignore */ }
-  }, []);
 
   const saveSolved = useCallback((solved: Set<number>) => {
     try {
@@ -269,7 +267,12 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     channelRef.current = channel;
   }, [roomCodeInput, resetGame, t]);
 
-  const handleOnlineClick = (row: number, col: number) => {
+  const sendMove = useCallback((row: number, col: number) => {
+    const ch = channelRef.current;
+    if (ch) ch.send({ type: 'broadcast', event: 'move', payload: { row, col } });
+  }, []);
+
+  const handleOnlineClick = useCallback((row: number, col: number) => {
     if (winner || board[row][col] !== 0 || !pvp) return;
     if (currentPlayer !== pvp.myColor) return;
 
@@ -286,12 +289,8 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       setCurrentPlayer(currentPlayer === 1 ? 2 : 1);
     }
 
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'move',
-      payload: { row, col },
-    });
-  };
+    sendMove(row, col);
+  }, [winner, board, pvp, currentPlayer, moveHistory, sendMove]);
 
   // Handle opponent's move
   useEffect(() => {
@@ -315,13 +314,13 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     setOpponentMove(null);
   }, [opponentMove, pvp, board, winner]);
 
-  const handleOnlineRestart = () => {
+  const handleOnlineRestart = useCallback(() => {
     resetGame();
     setCurrentPlayer(1);
     channelRef.current?.send({ type: 'broadcast', event: 'restart', payload: {} });
-  };
+  }, [resetGame]);
 
-  const leaveRoom = () => {
+  const leaveRoom = useCallback(() => {
     channelRef.current?.send({ type: 'broadcast', event: 'leave', payload: {} });
     channelRef.current?.unsubscribe();
     channelRef.current = null;
@@ -330,7 +329,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     setPvpError('');
     resetGame();
     setMode('online-menu');
-  };
+  }, [resetGame]);
 
   // Cleanup on unmount
   useEffect(() => {

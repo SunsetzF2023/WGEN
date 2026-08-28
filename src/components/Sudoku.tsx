@@ -178,8 +178,9 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
 
   // ─── Ranked mode state ───
   const [mode, setMode] = useState<GameMode>('menu');
-  const [rankStars, setRankStars] = useState(0);
-  const [matchHistory, setMatchHistory] = useState<MatchRecord[]>([]);
+  const [rankData] = useState(() => loadRankData());
+  const [rankStars, setRankStars] = useState(rankData.stars);
+  const [matchHistory, setMatchHistory] = useState<MatchRecord[]>(rankData.history);
   const [aiOpponent, setAiOpponent] = useState<{ name: string; avatar: string; time: number } | null>(null);
   const [matchResult, setMatchResult] = useState<{ win: boolean; playerTime: number; aiTime: number; starsChange: number } | null>(null);
   const [matchDifficulty, setMatchDifficulty] = useState<Difficulty>('easy');
@@ -193,12 +194,6 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
     setCompleted(false);
     setTimer(0);
     setTimerRunning(true);
-  }, []);
-
-  useEffect(() => {
-    const data = loadRankData();
-    setRankStars(data.stars);
-    setMatchHistory(data.history);
   }, []);
 
   useEffect(() => {
@@ -236,7 +231,7 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
     return true;
   };
 
-  const handleInput = (num: number) => {
+  const handleInput = useCallback((num: number) => {
     if (!selected || completed) return;
     const [row, col] = selected;
     if (cells[row][col].isGiven) return;
@@ -317,7 +312,7 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
         setMode('result');
       }
     }
-  };
+  }, [selected, completed, cells, noteMode, mode, aiOpponent, timer, matchDifficulty, rankStars, matchHistory]);
 
   const startCasual = (diff: Difficulty) => {
     setDifficulty(diff);
@@ -338,7 +333,7 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
     }, 2000 + Math.random() * 2000);
   };
 
-  const handleErase = () => {
+  const handleErase = useCallback(() => {
     if (!selected || completed) return;
     const [row, col] = selected;
     if (cells[row][col].isGiven) return;
@@ -347,7 +342,7 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
     newCells[row][col].notes.clear();
     setCells(newCells);
     setErrors(new Set());
-  };
+  }, [selected, completed, cells]);
 
   const handleHint = () => {
     if (!selected || completed) return;
@@ -385,7 +380,7 @@ export function Sudoku({ onExit }: { onExit: () => void }) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selected, completed, cells, noteMode, solution]);
+  }, [selected, completed, cells, noteMode, solution, handleInput, handleErase]);
 
   const getRelatedCells = (row: number, col: number): Set<string> => {
     const related = new Set<string>();
