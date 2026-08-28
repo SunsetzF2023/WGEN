@@ -370,29 +370,23 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
     const homeColor = homeColorMap.get(key);
     const baseColor = baseColorMap.get(key);
     const entryColor = entryMap.get(key);
-    const isCenter = row >= 6 && row <= 8 && col >= 6 && col <= 8;
 
-    if (!isPath && homeColor === undefined && baseColor === undefined && !isCenter) return null;
+    if (!isPath && homeColor === undefined && baseColor === undefined) return null;
 
-    let bg = 'transparent';
-    let border = 'none';
-    let borderRadius = 4;
+    let bg = '#f8fafc';
+    let border = '1px solid rgba(30, 41, 59, 0.35)';
+    let borderRadius = 3;
 
     if (isPath) {
-      bg = entryColor !== undefined ? `${COLOR_HEX[entryColor]}55` : 'rgba(240, 240, 240, 0.12)';
-      border = '1px solid rgba(255, 255, 255, 0.15)';
+      bg = entryColor !== undefined ? COLOR_HEX[entryColor] : '#f8fafc';
     }
     if (homeColor !== undefined) {
-      bg = `${COLOR_HEX[homeColor]}66`;
-      border = `1px solid ${COLOR_HEX[homeColor]}aa`;
+      bg = COLOR_HEX[homeColor];
     }
     if (baseColor !== undefined) {
-      bg = `${COLOR_HEX[baseColor]}44`;
-      border = `2px solid ${COLOR_HEX[baseColor]}88`;
+      bg = `${COLOR_HEX[baseColor]}30`;
+      border = `2px solid ${COLOR_HEX[baseColor]}`;
       borderRadius = 50;
-    }
-    if (isCenter && homeColor === undefined) {
-      bg = 'rgba(255, 215, 0, 0.08)';
     }
 
     return (
@@ -407,6 +401,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
           background: bg,
           border,
           borderRadius,
+          boxShadow: isPath || homeColor !== undefined ? 'inset 0 0 0 1px rgba(255,255,255,0.4)' : 'none',
         }}
       />
     );
@@ -647,7 +642,17 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
       </div>
 
       {/* Board */}
-      <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ width: boardPx, height: boardPx, background: '#1e293b' }}>
+      <div
+        className="relative rounded-2xl overflow-hidden shadow-2xl"
+        style={{
+          width: boardPx,
+          height: boardPx,
+          background: '#0f172a',
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
+          backgroundSize: `${cellSize}px ${cellSize}px`,
+        }}
+      >
         {/* Quadrant backgrounds */}
         {QUADRANTS.map((q) => (
           <div
@@ -658,29 +663,27 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
               top: q.row * cellSize,
               width: q.cols * cellSize,
               height: q.rows * cellSize,
-              background: `${COLOR_HEX[q.color]}1a`,
-              border: `2px solid ${COLOR_HEX[q.color]}33`,
-              borderRadius: 8,
+              background: `${COLOR_HEX[q.color]}33`,
+              border: `3px solid ${COLOR_HEX[q.color]}`,
+              borderRadius: 10,
             }}
           />
         ))}
 
-        {/* Quadrant labels - placed in outer corner, away from base plane slots */}
+        {/* Quadrant corner badges - small, tucked into the true outer corner so they never overlap the 2x2 plane slots */}
         {QUADRANTS.map((q) => {
           const isTop = q.row === 0;
           const isLeft = q.col === 0;
-          const labelRow = isTop ? q.row : q.row + q.rows - 1.7;
-          const labelCol = isLeft ? q.col : q.col + q.cols - 1.7;
           return (
             <div
               key={`label-${q.color}`}
-              className="absolute flex items-center justify-center text-xl font-bold pointer-events-none"
+              className="absolute flex items-center justify-center text-sm pointer-events-none"
               style={{
-                left: labelCol * cellSize,
-                top: labelRow * cellSize,
-                width: cellSize * 1.7,
-                height: cellSize * 1.7,
-                color: `${COLOR_HEX[q.color]}33`,
+                left: (isLeft ? q.col : q.col + q.cols - 0.9) * cellSize,
+                top: (isTop ? q.row : q.row + q.rows - 0.9) * cellSize,
+                width: cellSize * 0.9,
+                height: cellSize * 0.9,
+                opacity: 0.5,
               }}
             >
               {COLOR_EMOJI[q.color]}
@@ -699,35 +702,34 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
           style={{ left: 6 * cellSize, top: 6 * cellSize, width: 3 * cellSize, height: 3 * cellSize }}
         >
           {/* Red triangle (top-left) */}
-          <polygon points={`0,0 ${3 * cellSize},0 0,${3 * cellSize}`} fill={`${COLOR_HEX[0]}66`} stroke={COLOR_HEX[0]} strokeWidth={1} />
+          <polygon points={`0,0 ${3 * cellSize},0 0,${3 * cellSize}`} fill={COLOR_HEX[0]} stroke="#0f172a" strokeWidth={1} />
           {/* Yellow triangle (top-right) */}
-          <polygon points={`${3 * cellSize},0 ${3 * cellSize},${3 * cellSize} 0,0`} fill="none" />
-          <polygon points={`${3 * cellSize},0 ${3 * cellSize},${3 * cellSize} 0,0`} fill={`${COLOR_HEX[1]}66`} stroke={COLOR_HEX[1]} strokeWidth={1} opacity={0.5} />
+          <polygon points={`${3 * cellSize},0 ${3 * cellSize},${3 * cellSize} 0,0`} fill={COLOR_HEX[1]} stroke="#0f172a" strokeWidth={1} />
           {/* Blue triangle (bottom-right) */}
-          <polygon points={`${3 * cellSize},${3 * cellSize} 0,${3 * cellSize} ${3 * cellSize},0`} fill={`${COLOR_HEX[2]}66`} stroke={COLOR_HEX[2]} strokeWidth={1} />
+          <polygon points={`${3 * cellSize},${3 * cellSize} 0,${3 * cellSize} ${3 * cellSize},0`} fill={COLOR_HEX[2]} stroke="#0f172a" strokeWidth={1} />
           {/* Green triangle (bottom-left) */}
-          <polygon points={`0,${3 * cellSize} 0,0 ${3 * cellSize},${3 * cellSize}`} fill={`${COLOR_HEX[3]}66`} stroke={COLOR_HEX[3]} strokeWidth={1} />
+          <polygon points={`0,${3 * cellSize} 0,0 ${3 * cellSize},${3 * cellSize}`} fill={COLOR_HEX[3]} stroke="#0f172a" strokeWidth={1} />
           {/* Center flag */}
-          <text x={1.5 * cellSize} y={1.6 * cellSize} textAnchor="middle" fontSize={20} opacity={0.5}>🏁</text>
+          <text x={1.5 * cellSize} y={1.6 * cellSize} textAnchor="middle" fontSize={20}>🏁</text>
         </svg>
 
-        {/* Entry point arrows */}
+        {/* Entry point stars - white so they stay visible on the opaque colored entry cell */}
         {ENTRY_POINTS.map((entry, color) => {
           const coord = MAIN_LOOP_COORDS[entry];
           return (
             <div
               key={`entry-${color}`}
-              className="absolute flex items-center justify-center text-sm font-bold"
+              className="absolute flex items-center justify-center text-base font-bold pointer-events-none"
               style={{
-                left: coord.col * cellSize + 2,
-                top: coord.row * cellSize + 2,
-                width: cellSize - 4,
-                height: cellSize - 4,
-                color: COLOR_HEX[color],
-                textShadow: `0 0 4px ${COLOR_HEX[color]}`,
+                left: coord.col * cellSize,
+                top: coord.row * cellSize,
+                width: cellSize,
+                height: cellSize,
+                color: 'white',
+                textShadow: '0 1px 2px rgba(0,0,0,0.6)',
               }}
             >
-              ●
+              ★
             </div>
           );
         })}
