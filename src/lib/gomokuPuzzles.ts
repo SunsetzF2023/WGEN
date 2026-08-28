@@ -18,8 +18,14 @@ function emptyBoard(): number[][] {
 // Helper to place stones on a board
 function place(stones: [number, number, number][]): number[][] {
   const b = emptyBoard();
-  for (const [r, c, v] of stones) b[r][c] = v;
+  for (const [r, c, v] of stones) {
+    if (r >= 0 && r < 15 && c >= 0 && c < 15) b[r][c] = v;
+  }
   return b;
+}
+
+function clamp(v: number): number {
+  return Math.max(0, Math.min(14, v));
 }
 
 // ─── Generate 120 puzzles programmatically ───
@@ -42,8 +48,8 @@ function makePuzzles(): Puzzle[] {
     const count = 24; // 24 per difficulty = 120 total
 
     for (let i = 0; i < count; i++) {
-      const baseRow = 3 + (i % 9); // spread across board
-      const baseCol = 3 + ((i * 2) % 9);
+      const baseRow = 1 + (i % 5); // 1-5, keeps all offsets within 0-14
+      const baseCol = 1 + ((i * 3) % 5);
       const dir = i % 4; // 0=horizontal, 1=vertical, 2=diagonal, 3=anti-diagonal
 
       if (diff === 1) {
@@ -72,7 +78,7 @@ function makePuzzles(): Puzzle[] {
           id: id++,
           difficulty: 1,
           board: place(stones),
-          solution: [solR, solC],
+          solution: [clamp(solR), clamp(solC)],
           hint: '四子连珠，填入空位即可获胜',
         });
       } else if (diff === 2) {
@@ -99,7 +105,7 @@ function makePuzzles(): Puzzle[] {
           id: id++,
           difficulty: 2,
           board: place(stones),
-          solution: [solR, solC],
+          solution: [clamp(solR), clamp(solC)],
           hint: '中间有断点，补上即可五连',
         });
       } else if (diff === 3) {
@@ -127,7 +133,7 @@ function makePuzzles(): Puzzle[] {
           id: id++,
           difficulty: 3,
           board: place(stones),
-          solution: [solR, solC],
+          solution: [clamp(solR), clamp(solC)],
           hint: '找到能同时形成两个威胁的关键点',
         });
       } else if (diff === 4) {
@@ -156,7 +162,7 @@ function makePuzzles(): Puzzle[] {
           id: id++,
           difficulty: 4,
           board: place(stones),
-          solution: [solR, solC],
+          solution: [clamp(solR), clamp(solC)],
           hint: '一子双杀：同时形成活四和活三',
         });
       } else {
@@ -190,7 +196,7 @@ function makePuzzles(): Puzzle[] {
           id: id++,
           difficulty: 5,
           board: place(stones),
-          solution: [solR, solC],
+          solution: [clamp(solR), clamp(solC)],
           hint: '复杂局面：找到能形成多重威胁的妙手',
         });
       }
