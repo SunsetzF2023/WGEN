@@ -333,34 +333,63 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
   }, []);
 
   // ─── Board rendering ───
-  const cellSize = 34;
+  const cellSize = 36;
   const boardPx = cellSize * GRID_SIZE;
 
+  // Precompute lookup sets for fast checking
+  const pathSet = new Set(MAIN_LOOP_COORDS.map((c) => `${c.row},${c.col}`));
+  const homeColorMap = new Map<string, number>();
+  HOME_STRETCH_COORDS.forEach((stretch, color) => {
+    stretch.forEach((c) => homeColorMap.set(`${c.row},${c.col}`, color));
+  });
+  const baseColorMap = new Map<string, number>();
+  BASE_COORDS.forEach((base, color) => {
+    base.forEach((c) => baseColorMap.set(`${c.row},${c.col}`, color));
+  });
+  const entryMap = new Map<string, number>();
+  ENTRY_POINTS.forEach((entry, color) => {
+    const coord = MAIN_LOOP_COORDS[entry];
+    entryMap.set(`${coord.row},${coord.col}`, color);
+  });
+
+  // Quadrant background areas
+  const QUADRANTS = [
+    { color: 0, row: 0, col: 0, rows: 6, cols: 6 },          // Red: top-left
+    { color: 1, row: 0, col: 8, rows: 6, cols: 6 },          // Yellow: top-right
+    { color: 2, row: 8, col: 8, rows: 6, cols: 6 },          // Blue: bottom-right
+    { color: 3, row: 8, col: 0, rows: 6, cols: 6 },          // Green: bottom-left
+  ];
+
   const renderCell = (row: number, col: number) => {
-    const isPath = MAIN_LOOP_COORDS.some((c) => c.row === row && c.col === col);
-    const isHome = HOME_STRETCH_COORDS.some((stretch) => stretch.some((c) => c.row === row && c.col === col));
-    const isBase = BASE_COORDS.some((base) => base.some((c) => c.row === row && c.col === col));
+    const key = `${row},${col}`;
+    const isPath = pathSet.has(key);
+    const homeColor = homeColorMap.get(key);
+    const baseColor = baseColorMap.get(key);
+    const entryColor = entryMap.get(key);
     const isCenter = row >= 6 && row <= 8 && col >= 6 && col <= 8;
 
+    if (!isPath && homeColor === undefined && baseColor === undefined && !isCenter) return null;
+
     let bg = 'transparent';
-    if (isPath) bg = 'rgba(100, 100, 100, 0.15)';
-    if (isHome) {
-      for (let i = 0; i < 4; i++) {
-        if (HOME_STRETCH_COORDS[i].some((c) => c.row === row && c.col === col)) {
-          bg = `${COLOR_HEX[i]}33`;
-          break;
-        }
-      }
+    let border = 'none';
+    let borderRadius = 4;
+
+    if (isPath) {
+      bg = entryColor !== undefined ? `${COLOR_HEX[entryColor]}55` : 'rgba(240, 240, 240, 0.12)';
+      border = '1px solid rgba(255, 255, 255, 0.15)';
     }
-    if (isBase) {
-      for (let i = 0; i < 4; i++) {
-        if (BASE_COORDS[i].some((c) => c.row === row && c.col === col)) {
-          bg = `${COLOR_HEX[i]}22`;
-          break;
-        }
-      }
+    if (homeColor !== undefined) {
+      bg = `${COLOR_HEX[homeColor]}66`;
+      border = `1px solid ${COLOR_HEX[homeColor]}aa`;
     }
-    if (isCenter) bg = 'rgba(255, 215, 0, 0.15)';
+    if (baseColor !== undefined) {
+      bg = `${COLOR_HEX[baseColor]}44`;
+      border = `2px solid ${COLOR_HEX[baseColor]}88`;
+      borderRadius = 50;
+    }
+    if (isCenter && homeColor === undefined) {
+      bg = 'rgba(255, 215, 0, 0.08)';
+    }
 
     return (
       <div
@@ -372,8 +401,8 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
           width: cellSize,
           height: cellSize,
           background: bg,
-          border: isPath || isHome || isBase ? '1px solid rgba(255,255,255,0.05)' : 'none',
-          borderRadius: 4,
+          border,
+          borderRadius,
         }}
       />
     );
@@ -391,21 +420,21 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
         onClick={() => canClick && handlePlaneClick(plane.color, plane.id)}
         disabled={!canClick}
         className={`absolute flex items-center justify-center rounded-full transition-all ${
-          isMovable && isCurrentPlayer ? 'ring-2 ring-white animate-pulse cursor-pointer' : ''
+          isMovable && isCurrentPlayer ? 'ring-2 ring-white animate-pulse cursor-pointer z-10' : ''
         } ${!canClick && isMovable ? 'cursor-pointer' : 'cursor-default'}`}
         style={{
-          left: col * cellSize + 4,
-          top: row * cellSize + 4,
-          width: cellSize - 8,
-          height: cellSize - 8,
-          background: COLOR_HEX[plane.color],
-          opacity: plane.state === 'finished' ? 0.4 : 1,
-          boxShadow: isMovable && isCurrentPlayer ? `0 0 8px ${COLOR_HEX[plane.color]}` : 'none',
-          border: '2px solid rgba(255,255,255,0.3)',
+          left: col * cellSize + 3,
+          top: row * cellSize + 3,
+          width: cellSize - 6,
+          height: cellSize - 6,
+          background: `radial-gradient(circle at 30% 30%, ${COLOR_HEX[plane.color]}ee, ${COLOR_HEX[plane.color]}aa)`,
+          opacity: plane.state === 'finished' ? 0.3 : 1,
+          boxShadow: isMovable && isCurrentPlayer ? `0 0 10px ${COLOR_HEX[plane.color]}, 0 0 4px white` : `0 1px 3px rgba(0,0,0,0.4)`,
+          border: '2px solid rgba(255,255,255,0.4)',
         }}
       >
-        <span className="text-xs" style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.5))' }}>
-          {plane.state === 'base' ? '✈' : plane.state === 'finished' ? '★' : `${plane.id + 1}`}
+        <span className="text-sm" style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.5))' }}>
+          {plane.state === 'finished' ? '★' : '✈'}
         </span>
       </button>
     );
@@ -614,48 +643,93 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
       </div>
 
       {/* Board */}
-      <div className="relative" style={{ width: boardPx, height: boardPx }}>
-        {/* Board background */}
-        <div className="absolute inset-0 rounded-xl bg-slate-800 border border-slate-700 shadow-xl" />
+      <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ width: boardPx, height: boardPx, background: '#1e293b' }}>
+        {/* Quadrant backgrounds */}
+        {QUADRANTS.map((q) => (
+          <div
+            key={`quad-${q.color}`}
+            className="absolute"
+            style={{
+              left: q.col * cellSize,
+              top: q.row * cellSize,
+              width: q.cols * cellSize,
+              height: q.rows * cellSize,
+              background: `${COLOR_HEX[q.color]}1a`,
+              border: `2px solid ${COLOR_HEX[q.color]}33`,
+              borderRadius: 8,
+            }}
+          />
+        ))}
 
-        {/* Cells */}
+        {/* Quadrant labels */}
+        {QUADRANTS.map((q) => {
+          const labelRow = q.row + (q.rows / 2) - 0.5;
+          const labelCol = q.col + (q.cols / 2) - 0.5;
+          // Offset label to avoid overlapping with base circles
+          const isTop = q.row === 0;
+          const isLeft = q.col === 0;
+          const labelR = labelRow + (isTop ? -1.5 : 1.5);
+          const labelC = labelCol + (isLeft ? -1.5 : 1.5);
+          return (
+            <div
+              key={`label-${q.color}`}
+              className="absolute flex items-center justify-center text-lg font-bold"
+              style={{
+                left: labelC * cellSize,
+                top: labelR * cellSize,
+                width: cellSize * 2,
+                height: cellSize * 2,
+                color: `${COLOR_HEX[q.color]}44`,
+              }}
+            >
+              {COLOR_EMOJI[q.color]}
+            </div>
+          );
+        })}
+
+        {/* Path cells */}
         {Array.from({ length: GRID_SIZE }, (_, row) =>
           Array.from({ length: GRID_SIZE }, (_, col) => renderCell(row, col))
         )}
 
-        {/* Entry point markers */}
+        {/* Center area with 4 colored triangles */}
+        <svg
+          className="absolute"
+          style={{ left: 6 * cellSize, top: 6 * cellSize, width: 3 * cellSize, height: 3 * cellSize }}
+        >
+          {/* Red triangle (top-left) */}
+          <polygon points={`0,0 ${3 * cellSize},0 0,${3 * cellSize}`} fill={`${COLOR_HEX[0]}66`} stroke={COLOR_HEX[0]} strokeWidth={1} />
+          {/* Yellow triangle (top-right) */}
+          <polygon points={`${3 * cellSize},0 ${3 * cellSize},${3 * cellSize} 0,0`} fill="none" />
+          <polygon points={`${3 * cellSize},0 ${3 * cellSize},${3 * cellSize} 0,0`} fill={`${COLOR_HEX[1]}66`} stroke={COLOR_HEX[1]} strokeWidth={1} opacity={0.5} />
+          {/* Blue triangle (bottom-right) */}
+          <polygon points={`${3 * cellSize},${3 * cellSize} 0,${3 * cellSize} ${3 * cellSize},0`} fill={`${COLOR_HEX[2]}66`} stroke={COLOR_HEX[2]} strokeWidth={1} />
+          {/* Green triangle (bottom-left) */}
+          <polygon points={`0,${3 * cellSize} 0,0 ${3 * cellSize},${3 * cellSize}`} fill={`${COLOR_HEX[3]}66`} stroke={COLOR_HEX[3]} strokeWidth={1} />
+          {/* Center flag */}
+          <text x={1.5 * cellSize} y={1.6 * cellSize} textAnchor="middle" fontSize={20} opacity={0.5}>🏁</text>
+        </svg>
+
+        {/* Entry point arrows */}
         {ENTRY_POINTS.map((entry, color) => {
           const coord = MAIN_LOOP_COORDS[entry];
           return (
             <div
               key={`entry-${color}`}
-              className="absolute rounded-full flex items-center justify-center text-xs"
+              className="absolute flex items-center justify-center text-sm font-bold"
               style={{
                 left: coord.col * cellSize + 2,
                 top: coord.row * cellSize + 2,
                 width: cellSize - 4,
                 height: cellSize - 4,
-                border: `2px solid ${COLOR_HEX[color]}`,
-                background: `${COLOR_HEX[color]}22`,
+                color: COLOR_HEX[color],
+                textShadow: `0 0 4px ${COLOR_HEX[color]}`,
               }}
             >
-              <span style={{ color: COLOR_HEX[color] }}>→</span>
+              ●
             </div>
           );
         })}
-
-        {/* Center finish area */}
-        <div
-          className="absolute flex items-center justify-center"
-          style={{
-            left: 6 * cellSize,
-            top: 6 * cellSize,
-            width: 3 * cellSize,
-            height: 3 * cellSize,
-          }}
-        >
-          <div className="text-2xl opacity-30">🏁</div>
-        </div>
 
         {/* Planes */}
         {gameState.planes.map((plane) => renderPlane(plane))}
