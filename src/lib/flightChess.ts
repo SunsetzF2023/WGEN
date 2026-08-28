@@ -1,7 +1,8 @@
 // ─── Flight Chess (飞行棋) Game Logic ───
-// 4 players, each with 4 planes.
-// 52-cell main loop + 6-cell home stretch per player.
-// Roll 6 to take off. Passing over opponents sends them back to base.
+// Classic cross-shaped Ludo-style board on a 15x15 grid.
+// 4 players, each with 4 planes. 52-cell main loop + 6-cell home stretch per player.
+// Roll 6 to take off. Passing over opponents (not just landing) sends them back to base.
+// Roll 6 grants an extra turn.
 
 export type PlayerColor = 0 | 1 | 2 | 3; // 0=red, 1=yellow, 2=blue, 3=green
 export type PlaneState = 'base' | 'flying' | 'home' | 'finished';
@@ -22,40 +23,56 @@ export interface GameState {
   lastAction: string;
 }
 
-// Each color enters the main loop at a different entry point
+// Each color enters the main loop at a different entry point (52 / 4 = 13 apart)
 export const ENTRY_POINTS: number[] = [0, 13, 26, 39];
 export const COLOR_NAMES = ['red', 'yellow', 'blue', 'green'] as const;
 export const COLOR_EMOJI = ['🔴', '🟡', '🔵', '🟢'] as const;
 export const COLOR_HEX = ['#ef4444', '#eab308', '#3b82f6', '#22c55e'] as const;
 
-export const GRID_SIZE = 14;
+// 15x15 classic Ludo-style cross board:
+// - 4 corner 6x6 home quadrants (rows/cols 0-5 or 9-14)
+// - 4 arms, each 3 cells wide x 6 cells long, connecting quadrants to the center
+// - Center 3x3 (rows 6-8, cols 6-8) is the finish area
+export const GRID_SIZE = 15;
 
-// Build 52-cell main loop as the outer ring of a 14x14 grid
-function buildMainLoopCoords(): { row: number; col: number }[] {
-  const coords: { row: number; col: number }[] = [];
-  for (let c = 0; c < GRID_SIZE; c++) coords.push({ row: 0, col: c });
-  for (let r = 1; r < GRID_SIZE; r++) coords.push({ row: r, col: GRID_SIZE - 1 });
-  for (let c = GRID_SIZE - 2; c >= 0; c--) coords.push({ row: GRID_SIZE - 1, col: c });
-  for (let r = GRID_SIZE - 2; r >= 1; r--) coords.push({ row: r, col: 0 });
-  return coords;
-}
-
-export const MAIN_LOOP_COORDS = buildMainLoopCoords();
-
-// Home stretch: 6 cells diagonally toward center from each corner
-export const HOME_STRETCH_COORDS: { row: number; col: number }[][] = [
-  [{ row: 1, col: 1 }, { row: 2, col: 2 }, { row: 3, col: 3 }, { row: 4, col: 4 }, { row: 5, col: 5 }, { row: 6, col: 6 }],
-  [{ row: 1, col: 12 }, { row: 2, col: 11 }, { row: 3, col: 10 }, { row: 4, col: 9 }, { row: 5, col: 8 }, { row: 6, col: 7 }],
-  [{ row: 12, col: 12 }, { row: 11, col: 11 }, { row: 10, col: 10 }, { row: 9, col: 9 }, { row: 8, col: 8 }, { row: 7, col: 7 }],
-  [{ row: 12, col: 1 }, { row: 11, col: 2 }, { row: 10, col: 3 }, { row: 9, col: 4 }, { row: 8, col: 5 }, { row: 7, col: 6 }],
+// 52-cell main loop, traced clockwise starting at Red's entry (adjacent to Red's base)
+export const MAIN_LOOP_COORDS: { row: number; col: number }[] = [
+  { row: 6, col: 1 }, { row: 6, col: 2 }, { row: 6, col: 3 }, { row: 6, col: 4 }, { row: 6, col: 5 },
+  { row: 5, col: 6 }, { row: 4, col: 6 }, { row: 3, col: 6 }, { row: 2, col: 6 }, { row: 1, col: 6 }, { row: 0, col: 6 },
+  { row: 0, col: 7 },
+  { row: 0, col: 8 },
+  { row: 1, col: 8 }, { row: 2, col: 8 }, { row: 3, col: 8 }, { row: 4, col: 8 }, { row: 5, col: 8 },
+  { row: 6, col: 9 }, { row: 6, col: 10 }, { row: 6, col: 11 }, { row: 6, col: 12 }, { row: 6, col: 13 }, { row: 6, col: 14 },
+  { row: 7, col: 14 },
+  { row: 8, col: 14 },
+  { row: 8, col: 13 }, { row: 8, col: 12 }, { row: 8, col: 11 }, { row: 8, col: 10 }, { row: 8, col: 9 },
+  { row: 9, col: 8 }, { row: 10, col: 8 }, { row: 11, col: 8 }, { row: 12, col: 8 }, { row: 13, col: 8 }, { row: 14, col: 8 },
+  { row: 14, col: 7 },
+  { row: 14, col: 6 },
+  { row: 13, col: 6 }, { row: 12, col: 6 }, { row: 11, col: 6 }, { row: 10, col: 6 }, { row: 9, col: 6 },
+  { row: 8, col: 5 }, { row: 8, col: 4 }, { row: 8, col: 3 }, { row: 8, col: 2 }, { row: 8, col: 1 }, { row: 8, col: 0 },
+  { row: 7, col: 0 },
+  { row: 6, col: 0 },
 ];
 
-// Base (airport) positions - 4 planes in a 2x2 grid near each corner
+// Home stretch: 6 cells per color, leading from the arm into the center
+export const HOME_STRETCH_COORDS: { row: number; col: number }[][] = [
+  // Red: row 7, moving right from left arm into center
+  [{ row: 7, col: 1 }, { row: 7, col: 2 }, { row: 7, col: 3 }, { row: 7, col: 4 }, { row: 7, col: 5 }, { row: 7, col: 6 }],
+  // Yellow: col 7, moving down from top arm into center
+  [{ row: 1, col: 7 }, { row: 2, col: 7 }, { row: 3, col: 7 }, { row: 4, col: 7 }, { row: 5, col: 7 }, { row: 6, col: 7 }],
+  // Blue: row 7, moving left from right arm into center
+  [{ row: 7, col: 13 }, { row: 7, col: 12 }, { row: 7, col: 11 }, { row: 7, col: 10 }, { row: 7, col: 9 }, { row: 7, col: 8 }],
+  // Green: col 7, moving up from bottom arm into center
+  [{ row: 13, col: 7 }, { row: 12, col: 7 }, { row: 11, col: 7 }, { row: 10, col: 7 }, { row: 9, col: 7 }, { row: 8, col: 7 }],
+];
+
+// Base (airport) positions - 4 planes in a 2x2 spread within each 6x6 corner quadrant
 export const BASE_COORDS: { row: number; col: number }[][] = [
-  [{ row: 2, col: 2 }, { row: 2, col: 4 }, { row: 4, col: 2 }, { row: 4, col: 4 }],
-  [{ row: 2, col: 10 }, { row: 2, col: 12 }, { row: 4, col: 10 }, { row: 4, col: 12 }],
-  [{ row: 9, col: 10 }, { row: 9, col: 12 }, { row: 11, col: 10 }, { row: 11, col: 12 }],
-  [{ row: 9, col: 2 }, { row: 9, col: 4 }, { row: 11, col: 2 }, { row: 11, col: 4 }],
+  [{ row: 1, col: 1 }, { row: 1, col: 4 }, { row: 4, col: 1 }, { row: 4, col: 4 }], // Red: rows0-5,cols0-5
+  [{ row: 1, col: 10 }, { row: 1, col: 13 }, { row: 4, col: 10 }, { row: 4, col: 13 }], // Yellow: rows0-5,cols9-14
+  [{ row: 10, col: 10 }, { row: 10, col: 13 }, { row: 13, col: 10 }, { row: 13, col: 13 }], // Blue: rows9-14,cols9-14
+  [{ row: 10, col: 1 }, { row: 10, col: 4 }, { row: 13, col: 1 }, { row: 13, col: 4 }], // Green: rows9-14,cols0-5
 ];
 
 export function createInitialState(): GameState {
@@ -117,8 +134,10 @@ function checkCaptures(planes: Plane[], movingColor: PlayerColor, relativePos: n
   return captured;
 }
 
-// Move a plane and handle captures
-export function movePlane(state: GameState, color: PlayerColor, planeId: number, dice: number): GameState {
+// Move a plane and handle captures.
+// `activePlayers` = number of colors actually in play (used for turn rotation),
+// since both local (vs AI) and online PvP modes only use 2 of the 4 colors.
+export function movePlane(state: GameState, color: PlayerColor, planeId: number, dice: number, activePlayers = 4): GameState {
   const newPlanes = state.planes.map((p) => ({ ...p }));
   const plane = newPlanes.find((p) => p.color === color && p.id === planeId);
   if (!plane) return state;
@@ -165,7 +184,7 @@ export function movePlane(state: GameState, color: PlayerColor, planeId: number,
   const winner = allFinished ? color : null;
 
   const extraTurn = dice === 6 && !winner;
-  const nextPlayer = extraTurn ? color : ((color + 1) % 4) as PlayerColor;
+  const nextPlayer = extraTurn ? color : ((color + 1) % activePlayers) as PlayerColor;
 
   return {
     planes: newPlanes,

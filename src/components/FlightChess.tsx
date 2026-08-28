@@ -23,6 +23,11 @@ import {
 
 type GameMode = 'menu' | 'local' | 'online-menu' | 'online-create' | 'online-join' | 'online-game';
 
+// Both local (vs AI) and online PvP modes only ever use 2 colors (red & yellow).
+// Turn rotation must use this count, not 4, or the game will stall on an
+// uncontrolled color once it cycles past yellow.
+const ACTIVE_PLAYERS = 2;
+
 interface PvPState {
   roomCode: string;
   isHost: boolean;
@@ -78,7 +83,6 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
   const [diceRolling, setDiceRolling] = useState(false);
   const [hasRolled, setHasRolled] = useState(false);
   const [message, setMessage] = useState('');
-  const [numPlayers, setNumPlayers] = useState(2); // for local mode
 
   // PvP state
   const [pvp, setPvp] = useState<PvPState | null>(null);
@@ -123,7 +127,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
           setTimeout(() => {
             setGameState((prev) => ({
               ...prev,
-              currentPlayer: finalValue === 6 ? prev.currentPlayer : ((prev.currentPlayer + 1) % 4) as PlayerColor,
+              currentPlayer: finalValue === 6 ? prev.currentPlayer : ((prev.currentPlayer + 1) % ACTIVE_PLAYERS) as PlayerColor,
               diceValue: finalValue,
               lastAction: `${COLOR_EMOJI[prev.currentPlayer]} 掷出 ${finalValue}，无飞机可动`,
             }));
@@ -149,7 +153,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
     const movable = getMovablePlanes(gameState, gameState.currentPlayer, diceValue);
     if (!movable.some((p) => p.id === planeId)) return;
 
-    const newState = movePlane(gameState, color, planeId, diceValue);
+    const newState = movePlane(gameState, color, planeId, diceValue, ACTIVE_PLAYERS);
     setGameState(newState);
     setMessage(newState.lastAction);
     setHasRolled(false);
@@ -183,7 +187,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
         setTimeout(() => {
           setGameState((prev) => ({
             ...prev,
-            currentPlayer: dice === 6 ? prev.currentPlayer : ((prev.currentPlayer + 1) % numPlayers) as PlayerColor,
+            currentPlayer: dice === 6 ? prev.currentPlayer : ((prev.currentPlayer + 1) % ACTIVE_PLAYERS) as PlayerColor,
             diceValue: dice,
             lastAction: `${COLOR_EMOJI[prev.currentPlayer]} 掷出 ${dice}，无飞机可动`,
           }));
@@ -201,7 +205,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
       }
 
       setTimeout(() => {
-        const newState = movePlane(gameState, gameState.currentPlayer, planeId, dice);
+        const newState = movePlane(gameState, gameState.currentPlayer, planeId, dice, ACTIVE_PLAYERS);
         setGameState(newState);
         setMessage(newState.lastAction);
         setHasRolled(false);
@@ -210,14 +214,14 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [mode, gameState, hasRolled, diceRolling, numPlayers, t]);
+  }, [mode, gameState, hasRolled, diceRolling, t]);
 
   // ─── Online: handle opponent moves ───
   useEffect(() => {
     if (!opponentMove || !pvp || gameState.winner !== null) return;
     if (opponentMove.color === myColor) return;
 
-    const newState = movePlane(gameState, opponentMove.color, opponentMove.planeId, opponentMove.dice);
+    const newState = movePlane(gameState, opponentMove.color, opponentMove.planeId, opponentMove.dice, ACTIVE_PLAYERS);
     setGameState(newState);
     setMessage(newState.lastAction);
     setOpponentMove(null);
@@ -352,12 +356,12 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
     entryMap.set(`${coord.row},${coord.col}`, color);
   });
 
-  // Quadrant background areas
+  // Quadrant background areas (4 corner 6x6 home bases of the 15x15 cross board)
   const QUADRANTS = [
     { color: 0, row: 0, col: 0, rows: 6, cols: 6 },          // Red: top-left
-    { color: 1, row: 0, col: 8, rows: 6, cols: 6 },          // Yellow: top-right
-    { color: 2, row: 8, col: 8, rows: 6, cols: 6 },          // Blue: bottom-right
-    { color: 3, row: 8, col: 0, rows: 6, cols: 6 },          // Green: bottom-left
+    { color: 1, row: 0, col: 9, rows: 6, cols: 6 },          // Yellow: top-right
+    { color: 2, row: 9, col: 9, rows: 6, cols: 6 },          // Blue: bottom-right
+    { color: 3, row: 9, col: 0, rows: 6, cols: 6 },          // Green: bottom-left
   ];
 
   const renderCell = (row: number, col: number) => {
@@ -516,7 +520,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
 
           <div className="space-y-3">
             <button
-              onClick={() => { resetGame(); setNumPlayers(2); setMode('local'); }}
+              onClick={() => { resetGame(); setMode('local'); }}
               className="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors text-left"
             >
               <div className="flex items-center gap-3">
@@ -623,7 +627,7 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
 
       {/* Player info bar */}
       <div className="flex gap-2 mb-3">
-        {Array.from({ length: pvp ? 2 : numPlayers }, (_, i) => i as PlayerColor).map((c) => (
+        {Array.from({ length: ACTIVE_PLAYERS }, (_, i) => i as PlayerColor).map((c) => (
           <div
             key={c}
             className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${
@@ -661,25 +665,22 @@ export function FlightChess({ onExit }: { onExit: () => void }) {
           />
         ))}
 
-        {/* Quadrant labels */}
+        {/* Quadrant labels - placed in outer corner, away from base plane slots */}
         {QUADRANTS.map((q) => {
-          const labelRow = q.row + (q.rows / 2) - 0.5;
-          const labelCol = q.col + (q.cols / 2) - 0.5;
-          // Offset label to avoid overlapping with base circles
           const isTop = q.row === 0;
           const isLeft = q.col === 0;
-          const labelR = labelRow + (isTop ? -1.5 : 1.5);
-          const labelC = labelCol + (isLeft ? -1.5 : 1.5);
+          const labelRow = isTop ? q.row : q.row + q.rows - 1.7;
+          const labelCol = isLeft ? q.col : q.col + q.cols - 1.7;
           return (
             <div
               key={`label-${q.color}`}
-              className="absolute flex items-center justify-center text-lg font-bold"
+              className="absolute flex items-center justify-center text-xl font-bold pointer-events-none"
               style={{
-                left: labelC * cellSize,
-                top: labelR * cellSize,
-                width: cellSize * 2,
-                height: cellSize * 2,
-                color: `${COLOR_HEX[q.color]}44`,
+                left: labelCol * cellSize,
+                top: labelRow * cellSize,
+                width: cellSize * 1.7,
+                height: cellSize * 1.7,
+                color: `${COLOR_HEX[q.color]}33`,
               }}
             >
               {COLOR_EMOJI[q.color]}
