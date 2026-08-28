@@ -294,6 +294,12 @@ export function Sidebar({
             >
               🔢 {t('sudokuTitle')}
             </button>
+            <button
+              onClick={() => { onPlayGame('gomoku'); onToggle(); }}
+              className="w-full text-left text-sm py-2 px-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-300 transition-colors"
+            >
+              ⚫ {t('gomokuTitle')}
+            </button>
           </div>
 
           {/* ─── Settings ─── */}

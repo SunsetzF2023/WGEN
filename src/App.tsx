@@ -6,6 +6,7 @@ import { EntityDetail } from './components/EntityDetail';
 import { EntityEditor } from './components/EntityEditor';
 import { Sidebar } from './components/Sidebar';
 import { Sudoku } from './components/Sudoku';
+import { Gomoku } from './components/Gomoku';
 import { supabase, signInWithGitHub, signOut } from './lib/supabase';
 import {
   loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity, deleteCloudEntitiesByProject,
@@ -606,6 +607,8 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden">
         {gameView === 'sudoku' ? (
           <Sudoku onExit={() => setGameView(null)} />
+        ) : gameView === 'gomoku' ? (
+          <Gomoku onExit={() => setGameView(null)} />
         ) : dataLoading ? (
           <div className="w-full h-full flex items-center justify-center text-slate-400">
             <div className="flex items-center gap-2">
