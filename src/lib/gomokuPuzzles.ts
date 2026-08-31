@@ -87,15 +87,17 @@ function mulberry32(seed: number) {
 }
 
 // It is Black's move in every puzzle here, which only reflects a reachable
-// game state if the board actually looks like both sides have been playing:
-// equal stone counts, and those stones spread out in plausible clusters
-// rather than two lone "decoy" stones tucked in the corners. This simulates
-// a short, semi-random game history — starting from a few scattered anchor
-// points and growing alternating-color clusters outward — that is layered
-// underneath the hand-verified tactical shape. Every cell reserved by the
-// tactical shape or by `protectedCells` (the empty squares the tactic needs
-// to stay open) is strictly off-limits, so the puzzle's solution is
-// unaffected no matter where the simulated stones land.
+// game state if the board actually looks like one real, tangled local fight
+// — the way an actual gomoku endgame screenshot looks: a single dense knot
+// of interlocked black/white stones, not the tactical shape floating alone
+// with a separate decoy pile parked somewhere else on the board. So the
+// extra stones are grown directly OUT of the tactical shape itself: the
+// frontier starts as the tactical stones, and each new stone lands
+// immediately adjacent (radius 1) to an existing stone in the cluster,
+// alternating colors, until both sides reach `targetPerSide`. Every cell
+// reserved by `protectedCells` (the empty squares the tactic needs to stay
+// open) is strictly off-limits, so the solution is unaffected no matter how
+// tightly the surrounding stones pack in.
 function buildRealisticContext(
   tacticalStones: [number, number, number][],
   protectedCells: [number, number][],
@@ -112,21 +114,8 @@ function buildRealisticContext(
   let needBlack = Math.max(0, targetPerSide - black0);
   let needWhite = Math.max(0, targetPerSide - white0);
 
-  // Pick a few scattered anchor points, away from the tactical shape, to
-  // seed independent "skirmish" clusters elsewhere on the board.
-  const anchors: [number, number][] = [];
-  for (let attempts = 0; attempts < 200 && anchors.length < 3; attempts++) {
-    const r = 1 + Math.floor(rand() * (SIZE - 2));
-    const c = 1 + Math.floor(rand() * (SIZE - 2));
-    if (used.has(`${r},${c}`)) continue;
-    const tooClose = tacticalStones.some(([tr, tc]) => Math.abs(tr - r) <= 2 && Math.abs(tc - c) <= 2);
-    if (tooClose) continue;
-    anchors.push([r, c]);
-  }
-  if (anchors.length === 0) anchors.push([1, 1]);
-
   const result: [number, number, number][] = [];
-  const frontier: [number, number][] = [...anchors];
+  const frontier: [number, number][] = tacticalStones.map(([r, c]) => [r, c]);
   let colorTurn: 1 | 2 = rand() < 0.5 ? 1 : 2;
   let guard = 0;
 
@@ -135,10 +124,16 @@ function buildRealisticContext(
     const color: 1 | 2 = needBlack > 0 && needWhite > 0 ? colorTurn : needBlack > 0 ? 1 : 2;
 
     let placed = false;
-    for (let tries = 0; tries < 15 && !placed; tries++) {
+    // Radius-1 growth (mostly) keeps everything touching/interlocked like a
+    // real dense mid-game knot; an occasional radius-2 hop lets the cluster
+    // widen a little instead of becoming a single unbroken blob.
+    for (let tries = 0; tries < 25 && !placed; tries++) {
       const [br, bc] = frontier[Math.floor(rand() * frontier.length)];
-      const r = br + Math.floor(rand() * 5) - 2;
-      const c = bc + Math.floor(rand() * 5) - 2;
+      const radius = rand() < 0.8 ? 1 : 2;
+      const dr = Math.floor(rand() * (radius * 2 + 1)) - radius;
+      const dc = Math.floor(rand() * (radius * 2 + 1)) - radius;
+      if (dr === 0 && dc === 0) continue;
+      const r = br + dr, c = bc + dc;
       if (!inBounds(r, c)) continue;
       const key = `${r},${c}`;
       if (used.has(key)) continue;
