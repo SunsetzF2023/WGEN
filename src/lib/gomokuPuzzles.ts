@@ -1,7 +1,9 @@
-// Gomoku puzzle data: 120 endgame challenges
-// Each puzzle: player is Black (1), must find the winning move
+// Gomoku puzzle data: 34 hand-constructed tactical endgame challenges
+// Each puzzle: player is Black (1), must find a decisive move.
 // Board is 15x15, 0=empty, 1=black, 2=white
-// solution: [row, col] of the winning move
+// solution: [row, col] of one valid decisive move (other equally-decisive
+// moves, e.g. the other end of an open four, are also accepted at runtime
+// via isDecisiveMove — see handlePuzzleClick in Gomoku.tsx).
 
 export type Puzzle = {
   id: number;
@@ -11,196 +13,238 @@ export type Puzzle = {
   hint: string;
 };
 
+const SIZE = 15;
+type Dir = [number, number];
+const DIRS: Dir[] = [[0, 1], [1, 0], [1, 1], [1, -1]];
+
 function emptyBoard(): number[][] {
-  return Array.from({ length: 15 }, () => Array(15).fill(0));
+  return Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+}
+
+function inBounds(r: number, c: number): boolean {
+  return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
 }
 
 // Helper to place stones on a board
 function place(stones: [number, number, number][]): number[][] {
   const b = emptyBoard();
   for (const [r, c, v] of stones) {
-    if (r >= 0 && r < 15 && c >= 0 && c < 15) b[r][c] = v;
+    if (inBounds(r, c)) b[r][c] = v;
   }
   return b;
 }
 
-function clamp(v: number): number {
-  return Math.max(0, Math.min(14, v));
+type LineShape = 'five' | 'openFour' | 'four' | 'openThree' | 'none';
+
+// Classify the line passing through (row, col) along direction (dr, dc),
+// assuming `stone` was just placed at (row, col).
+function analyzeLine(board: number[][], row: number, col: number, dr: number, dc: number, stone: number): LineShape {
+  let count = 1;
+  let r = row + dr, c = col + dc;
+  while (inBounds(r, c) && board[r][c] === stone) { count++; r += dr; c += dc; }
+  const frontOpen = inBounds(r, c) && board[r][c] === 0;
+
+  let r2 = row - dr, c2 = col - dc;
+  while (inBounds(r2, c2) && board[r2][c2] === stone) { count++; r2 -= dr; c2 -= dc; }
+  const backOpen = inBounds(r2, c2) && board[r2][c2] === 0;
+
+  if (count >= 5) return 'five';
+  if (count === 4) return frontOpen && backOpen ? 'openFour' : frontOpen || backOpen ? 'four' : 'none';
+  if (count === 3) return frontOpen && backOpen ? 'openThree' : 'none';
+  return 'none';
 }
 
-// ─── Generate 120 puzzles programmatically ───
-// Each puzzle has a position where Black has 4-in-a-row with one open end,
-// or a double-threat position. Player must find the winning move.
+// True if placing `stone` at (row, col) is a decisive move: an outright win,
+// an open four (unstoppable), a double-four, a four+open-three combo, or a
+// double open-three (双活三). This is the same standard used to construct
+// every puzzle below, and is reused at runtime to accept alternate winning
+// moves that weren't the specific coordinate the puzzle was authored around.
+export function isDecisiveMove(board: number[][], row: number, col: number, stone: number): boolean {
+  let five = false, openFours = 0, fours = 0, openThrees = 0;
+  for (const [dr, dc] of DIRS) {
+    const shape = analyzeLine(board, row, col, dr, dc, stone);
+    if (shape === 'five') five = true;
+    else if (shape === 'openFour') openFours++;
+    else if (shape === 'four') fours++;
+    else if (shape === 'openThree') openThrees++;
+  }
+  if (five || openFours >= 1) return true;
+  if (fours >= 2) return true;
+  if (fours >= 1 && openThrees >= 1) return true;
+  if (openThrees >= 2) return true;
+  return false;
+}
+
+const DECOY_CANDIDATES: [number, number, number][] = [
+  [1, 1, 2], [13, 13, 1], [1, 13, 1], [13, 1, 2],
+  [2, 12, 1], [12, 2, 2], [0, 7, 2], [14, 7, 1],
+];
+
+// Add a couple of unrelated stones far from the tactical zone so the board
+// doesn't look like an obviously bare template.
+function withDecoys(stones: [number, number, number][], protectedCells: [number, number][], count = 2): [number, number, number][] {
+  const used = new Set(stones.map(([r, c]) => `${r},${c}`));
+  for (const [r, c] of protectedCells) used.add(`${r},${c}`);
+  const result = [...stones];
+  let added = 0;
+  for (const [r, c, v] of DECOY_CANDIDATES) {
+    if (added >= count) break;
+    if (used.has(`${r},${c}`)) continue;
+    result.push([r, c, v]);
+    added++;
+  }
+  return result;
+}
 
 function makePuzzles(): Puzzle[] {
   const puzzles: Puzzle[] = [];
   let id = 1;
 
-  // Difficulty 1-5: increasing complexity
-  // Pattern types:
-  // 1: Simple 4-in-a-row, fill the gap (open four)
-  // 2: Four with one end blocked, must fill open end
-  // 3: Split four (two separate threats)
-  // 4: Double-three or four-three combo
-  // 5: Complex multi-threat
+  // ─── Difficulty 1: open four — one end blocked, fill the open end for five ───
+  const tier1: { dir: number; base: [number, number] }[] = [
+    { dir: 0, base: [3, 3] },
+    { dir: 1, base: [4, 7] },
+    { dir: 2, base: [2, 2] },
+    { dir: 3, base: [5, 10] },
+    { dir: 0, base: [10, 2] },
+    { dir: 1, base: [8, 9] },
+  ];
+  for (const { dir, base: [br, bc] } of tier1) {
+    const [dr, dc] = DIRS[dir];
+    const stones: [number, number, number][] = [];
+    for (let k = 0; k < 4; k++) stones.push([br + dr * k, bc + dc * k, 1]);
+    stones.push([br + dr * 4, bc + dc * 4, 2]); // block far end
+    const solR = br - dr, solC = bc - dc;
+    puzzles.push({
+      id: id++,
+      difficulty: 1,
+      board: place(withDecoys(stones, [[solR, solC]])),
+      solution: [solR, solC],
+      hint: '一端已被封堵，把子下在另一端即可五连获胜',
+    });
+  }
 
-  for (let diff = 1; diff <= 5; diff++) {
-    const count = 24; // 24 per difficulty = 120 total
+  // ─── Difficulty 2: broken four (gap in the middle) — fill the gap for five ───
+  const tier2: { dir: number; base: [number, number] }[] = [
+    { dir: 0, base: [3, 3] },
+    { dir: 1, base: [6, 2] },
+    { dir: 2, base: [2, 6] },
+    { dir: 3, base: [9, 11] },
+    { dir: 0, base: [11, 1] },
+    { dir: 1, base: [1, 9] },
+  ];
+  for (const { dir, base: [br, bc] } of tier2) {
+    const [dr, dc] = DIRS[dir];
+    const stones: [number, number, number][] = [];
+    for (const k of [0, 1, 3, 4]) stones.push([br + dr * k, bc + dc * k, 1]);
+    stones.push([br + dr * 5, bc + dc * 5, 2]); // block far end
+    const solR = br + dr * 2, solC = bc + dc * 2;
+    puzzles.push({
+      id: id++,
+      difficulty: 2,
+      board: place(withDecoys(stones, [[solR, solC]])),
+      solution: [solR, solC],
+      hint: '四子中间断了一个点，补上缺口即可五连',
+    });
+  }
 
-    for (let i = 0; i < count; i++) {
-      const baseRow = 1 + (i % 5); // 1-5, keeps all offsets within 0-14
-      const baseCol = 1 + ((i * 3) % 5);
-      const dir = i % 4; // 0=horizontal, 1=vertical, 2=diagonal, 3=anti-diagonal
+  // ─── Difficulty 3: four + open-three combo (冲四活三) ───
+  // dirA already has 3 stones with the far end blocked (becomes a forcing
+  // "four" when completed); dirB has 2 stones with both ends open (becomes
+  // an open three). The shared point wins either way the opponent responds.
+  const tier3Pairs: [number, number][] = [[0, 1], [1, 0], [0, 2], [2, 0], [0, 3], [1, 2], [2, 3]];
+  for (const [a, b] of tier3Pairs) {
+    const [T_R, T_C] = [7, 7];
+    const [adr, adc] = DIRS[a];
+    const [bdr, bdc] = DIRS[b];
+    const stones: [number, number, number][] = [
+      [T_R - adr, T_C - adc, 1],
+      [T_R - adr * 2, T_C - adc * 2, 1],
+      [T_R - adr * 3, T_C - adc * 3, 1],
+      [T_R - adr * 4, T_C - adc * 4, 2],
+      [T_R + bdr, T_C + bdc, 1],
+      [T_R + bdr * 2, T_C + bdc * 2, 1],
+    ];
+    const protectedCells: [number, number][] = [
+      [T_R, T_C],
+      [T_R + adr, T_C + adc],
+      [T_R - bdr, T_C - bdc],
+      [T_R + bdr * 3, T_C + bdc * 3],
+    ];
+    puzzles.push({
+      id: id++,
+      difficulty: 3,
+      board: place(withDecoys(stones, protectedCells)),
+      solution: [T_R, T_C],
+      hint: '冲四活三：这步棋同时形成一个冲四和一个活三，对手防不住两头',
+    });
+  }
 
-      if (diff === 1) {
-        // Open four: 4 black in a row, fill either end
-        const stones: [number, number, number][] = [];
-        for (let k = 0; k < 4; k++) {
-          const r = dir === 1 ? baseRow + k : dir === 2 ? baseRow + k : dir === 3 ? baseRow + k : baseRow;
-          const c = dir === 0 ? baseCol + k : dir === 2 ? baseCol + k : dir === 3 ? baseCol + 3 - k : baseCol;
-          stones.push([r, c, 1]);
-        }
-        // One white stone blocking one end
-        const blockR = dir === 1 ? baseRow + 4 : dir === 2 ? baseRow + 4 : dir === 3 ? baseRow + 4 : baseRow;
-        const blockC = dir === 0 ? baseCol + 4 : dir === 2 ? baseCol + 4 : dir === 3 ? baseCol - 1 : baseCol;
-        stones.push([blockR, blockC, 2]);
-        // Solution: fill the other end
-        const solR = dir === 1 ? baseRow - 1 : dir === 2 ? baseRow - 1 : dir === 3 ? baseRow - 1 : baseRow;
-        const solC = dir === 0 ? baseCol - 1 : dir === 2 ? baseCol - 1 : dir === 3 ? baseCol + 4 : baseCol;
-        // Add some random white stones for visual complexity
-        const extraR = (baseRow + 7) % 15;
-        const extraC = (baseCol + 5) % 15;
-        stones.push([extraR, extraC, 2]);
-        if (extraR !== solR || extraC !== solC) {
-          stones.push([(extraR + 3) % 15, (extraC + 2) % 15, 1]);
-        }
-        puzzles.push({
-          id: id++,
-          difficulty: 1,
-          board: place(stones),
-          solution: [clamp(solR), clamp(solC)],
-          hint: '四子连珠，填入空位即可获胜',
-        });
-      } else if (diff === 2) {
-        // Four with gap: _X_XX_ or X_XXX_, fill the gap
-        const stones: [number, number, number][] = [];
-        // Place: X X _ X X (gap in middle)
-        const positions = [0, 1, 3, 4]; // skip position 2
-        for (const k of positions) {
-          const r = dir === 1 ? baseRow + k : dir === 2 ? baseRow + k : dir === 3 ? baseRow + k : baseRow;
-          const c = dir === 0 ? baseCol + k : dir === 2 ? baseCol + k : dir === 3 ? baseCol + 4 - k : baseCol;
-          stones.push([r, c, 1]);
-        }
-        // White blocks one end
-        const blockR = dir === 1 ? baseRow + 5 : dir === 2 ? baseRow + 5 : dir === 3 ? baseRow + 5 : baseRow;
-        const blockC = dir === 0 ? baseCol + 5 : dir === 2 ? baseCol + 5 : dir === 3 ? baseCol - 1 : baseCol;
-        stones.push([blockR, blockC, 2]);
-        // Solution: fill the gap at position 2
-        const solR = dir === 1 ? baseRow + 2 : dir === 2 ? baseRow + 2 : dir === 3 ? baseRow + 2 : baseRow;
-        const solC = dir === 0 ? baseCol + 2 : dir === 2 ? baseCol + 2 : dir === 3 ? baseCol + 2 : baseCol;
-        // Extra stones
-        stones.push([(baseRow + 6) % 15, (baseCol + 7) % 15, 2]);
-        stones.push([(baseRow + 8) % 15, (baseCol + 3) % 15, 1]);
-        puzzles.push({
-          id: id++,
-          difficulty: 2,
-          board: place(stones),
-          solution: [clamp(solR), clamp(solC)],
-          hint: '中间有断点，补上即可五连',
-        });
-      } else if (diff === 3) {
-        // Double threat: two separate open threes, find the move that creates a four
-        const stones: [number, number, number][] = [];
-        // Horizontal three
-        for (let k = 0; k < 3; k++) {
-          stones.push([baseRow, baseCol + k, 1]);
-        }
-        // Vertical three (overlapping)
-        for (let k = 0; k < 3; k++) {
-          stones.push([baseRow + k, baseCol + 2, 1]);
-        }
-        // White stones to block some ends
-        stones.push([baseRow, baseCol + 4, 2]);
-        stones.push([baseRow + 4, baseCol + 2, 2]);
-        // Extra complexity
-        stones.push([(baseRow + 6) % 15, (baseCol + 8) % 15, 2]);
-        stones.push([(baseRow + 2) % 15, (baseCol + 6) % 15, 2]);
-        stones.push([(baseRow + 7) % 15, (baseCol + 1) % 15, 1]);
-        // Solution: extend to make a four at the intersection
-        const solR = baseRow;
-        const solC = baseCol + 3;
-        puzzles.push({
-          id: id++,
-          difficulty: 3,
-          board: place(stones),
-          solution: [clamp(solR), clamp(solC)],
-          hint: '找到能同时形成两个威胁的关键点',
-        });
-      } else if (diff === 4) {
-        // Four-three combo: make a four and a three simultaneously
-        const stones: [number, number, number][] = [];
-        // Horizontal: X X _ X
-        stones.push([baseRow, baseCol, 1]);
-        stones.push([baseRow, baseCol + 1, 1]);
-        stones.push([baseRow, baseCol + 3, 1]);
-        // Vertical: X X X (starting from same point)
-        stones.push([baseRow, baseCol + 1, 1]); // already placed, but ok
-        stones.push([baseRow + 1, baseCol + 1, 1]);
-        stones.push([baseRow + 2, baseCol + 1, 1]);
-        // White blocks
-        stones.push([baseRow, baseCol + 4, 2]);
-        stones.push([baseRow + 3, baseCol + 1, 2]);
-        stones.push([baseRow + 4, baseCol + 1, 2]);
-        // Extra
-        stones.push([(baseRow + 6) % 15, (baseCol + 9) % 15, 2]);
-        stones.push([(baseRow + 8) % 15, (baseCol + 5) % 15, 1]);
-        stones.push([(baseRow + 1) % 15, (baseCol + 7) % 15, 2]);
-        // Solution: fill the gap at [baseRow, baseCol+2] - makes horizontal four + extends vertical
-        const solR = baseRow;
-        const solC = baseCol + 2;
-        puzzles.push({
-          id: id++,
-          difficulty: 4,
-          board: place(stones),
-          solution: [clamp(solR), clamp(solC)],
-          hint: '一子双杀：同时形成活四和活三',
-        });
-      } else {
-        // Diff 5: Complex multi-threat
-        const stones: [number, number, number][] = [];
-        // Diagonal three
-        stones.push([baseRow, baseCol, 1]);
-        stones.push([baseRow + 1, baseCol + 1, 1]);
-        stones.push([baseRow + 2, baseCol + 2, 1]);
-        // Horizontal pair
-        stones.push([baseRow + 2, baseCol + 3, 1]);
-        stones.push([baseRow + 2, baseCol + 4, 1]);
-        // Vertical pair
-        stones.push([baseRow + 3, baseCol + 2, 1]);
-        stones.push([baseRow + 4, baseCol + 2, 1]);
-        // White blocks scattered
-        stones.push([baseRow - 1, baseCol - 1, 2]);
-        stones.push([baseRow + 5, baseCol + 5, 2]);
-        stones.push([baseRow + 2, baseCol + 5, 2]);
-        stones.push([baseRow + 5, baseCol + 2, 2]);
-        stones.push([(baseRow + 7) % 15, (baseCol + 8) % 15, 2]);
-        stones.push([(baseRow + 9) % 15, (baseCol + 3) % 15, 1]);
-        stones.push([(baseRow + 1) % 15, (baseCol + 6) % 15, 2]);
-        stones.push([(baseRow + 8) % 15, (baseCol + 1) % 15, 1]);
-        // Solution: [baseRow+2, baseCol+2] already has black, so extend diagonal
-        // Actually the winning move is at [baseRow+3, baseCol+3] to make diagonal four
-        // AND horizontal three at row baseRow+2
-        const solR = baseRow + 3;
-        const solC = baseCol + 3;
-        puzzles.push({
-          id: id++,
-          difficulty: 5,
-          board: place(stones),
-          solution: [clamp(solR), clamp(solC)],
-          hint: '复杂局面：找到能形成多重威胁的妙手',
-        });
-      }
-    }
+  // ─── Difficulty 4: double open three (双活三) ───
+  const tier4: { a: number; b: number; mirrorA?: boolean }[] = [
+    { a: 0, b: 1 }, { a: 0, b: 2 }, { a: 0, b: 3 },
+    { a: 1, b: 2 }, { a: 1, b: 3 }, { a: 2, b: 3 },
+    { a: 0, b: 1, mirrorA: true },
+  ];
+  for (const { a, b, mirrorA } of tier4) {
+    const [T_R, T_C] = [7, 7];
+    const [adr, adc] = DIRS[a];
+    const [bdr, bdc] = DIRS[b];
+    const sign = mirrorA ? -1 : 1;
+    const stones: [number, number, number][] = [
+      [T_R + adr * sign, T_C + adc * sign, 1],
+      [T_R + adr * sign * 2, T_C + adc * sign * 2, 1],
+      [T_R + bdr, T_C + bdc, 1],
+      [T_R + bdr * 2, T_C + bdc * 2, 1],
+    ];
+    const protectedCells: [number, number][] = [
+      [T_R, T_C],
+      [T_R - adr * sign, T_C - adc * sign],
+      [T_R + adr * sign * 3, T_C + adc * sign * 3],
+      [T_R - bdr, T_C - bdc],
+      [T_R + bdr * 3, T_C + bdc * 3],
+    ];
+    puzzles.push({
+      id: id++,
+      difficulty: 4,
+      board: place(withDecoys(stones, protectedCells)),
+      solution: [T_R, T_C],
+      hint: '双活三：这步棋同时做出两个活三，对手只能挡住一边',
+    });
+  }
+
+  // ─── Difficulty 5: double four (双冲四) — hardest, both lines forcing ───
+  const tier5: { a: number; b: number; sign?: number }[] = [
+    { a: 0, b: 1 }, { a: 0, b: 2 }, { a: 0, b: 3 },
+    { a: 1, b: 2 }, { a: 1, b: 3 }, { a: 2, b: 3 },
+    { a: 0, b: 1, sign: 1 }, { a: 2, b: 3, sign: 1 },
+  ];
+  for (const { a, b, sign = -1 } of tier5) {
+    const [T_R, T_C] = [7, 7];
+    const [adr, adc] = DIRS[a];
+    const [bdr, bdc] = DIRS[b];
+    const stones: [number, number, number][] = [
+      [T_R + adr * sign, T_C + adc * sign, 1],
+      [T_R + adr * sign * 2, T_C + adc * sign * 2, 1],
+      [T_R + adr * sign * 3, T_C + adc * sign * 3, 1],
+      [T_R + adr * sign * 4, T_C + adc * sign * 4, 2],
+      [T_R + bdr * sign, T_C + bdc * sign, 1],
+      [T_R + bdr * sign * 2, T_C + bdc * sign * 2, 1],
+      [T_R + bdr * sign * 3, T_C + bdc * sign * 3, 1],
+      [T_R + bdr * sign * 4, T_C + bdc * sign * 4, 2],
+    ];
+    const protectedCells: [number, number][] = [
+      [T_R, T_C],
+      [T_R - adr * sign, T_C - adc * sign],
+      [T_R - bdr * sign, T_C - bdc * sign],
+    ];
+    puzzles.push({
+      id: id++,
+      difficulty: 5,
+      board: place(withDecoys(stones, protectedCells)),
+      solution: [T_R, T_C],
+      hint: '双冲四：这步棋同时形成两个冲四，对手无法两头都堵',
+    });
   }
 
   return puzzles;

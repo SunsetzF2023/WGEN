@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useI18n } from '../lib/i18n';
 import { supabase } from '../lib/supabase';
-import { GOMOKU_PUZZLES, type Puzzle } from '../lib/gomokuPuzzles';
+import { GOMOKU_PUZZLES, type Puzzle, isDecisiveMove } from '../lib/gomokuPuzzles';
 
 const BOARD_SIZE = 15;
 type Stone = 0 | 1 | 2; // 0=empty, 1=black, 2=white
@@ -138,26 +138,29 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     const p = currentPuzzle;
     if (!p) return;
 
-    // Try the move first: accept it if it's the designated solution OR if it
-    // actually produces a genuine 5-in-a-row win (some puzzles have more than
-    // one valid winning cell, e.g. an open four winnable from either end).
+    // Accept the move if it's the designated solution, OR if it's a genuine
+    // 5-in-a-row, OR if it forms any other decisive tactic (open four,
+    // double-four, four+open-three combo, double open-three). This handles
+    // puzzles where more than one cell is equally winning (e.g. an open four
+    // can be completed from either end).
     const trialBoard = board.map(r => [...r]) as Stone[][];
     trialBoard[row][col] = 1;
     const isDesignatedSolution = row === p.solution[0] && col === p.solution[1];
     const isRealWin = checkWin(trialBoard, row, col);
+    const isDecisive = isRealWin || isDecisiveMove(trialBoard, row, col, 1);
 
-    if (isDesignatedSolution || isRealWin) {
+    if (isDesignatedSolution || isDecisive) {
       setBoard(trialBoard);
       setLastMove([row, col]);
       if (isRealWin) {
         setWinner(1);
         setWinLine(findWinLine(trialBoard, row, col));
-        setPuzzleSolved(true);
-        const newSolved = new Set(solvedPuzzles);
-        newSolved.add(p.id);
-        setSolvedPuzzles(newSolved);
-        saveSolved(newSolved);
       }
+      setPuzzleSolved(true);
+      const newSolved = new Set(solvedPuzzles);
+      newSolved.add(p.id);
+      setSolvedPuzzles(newSolved);
+      saveSolved(newSolved);
     } else {
       // Wrong move
       setPuzzleError(true);
@@ -438,7 +441,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
             className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center justify-between transition-colors"
           >
             <span>🧩 {t('gomokuPuzzles')}</span>
-            <span className="text-xs text-indigo-200">{solvedPuzzles.size}/120</span>
+            <span className="text-xs text-indigo-200">{solvedPuzzles.size}/{GOMOKU_PUZZLES.length}</span>
           </button>
           <button
             onClick={() => { resetGame(); setMode('local'); }}
@@ -468,7 +471,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
             ← {t('gomokuBackMenu')}
           </button>
           <h1 className="text-lg font-bold text-slate-200">🧩 {t('gomokuPuzzles')}</h1>
-          <span className="text-xs text-slate-500">{solvedPuzzles.size}/120</span>
+          <span className="text-xs text-slate-500">{solvedPuzzles.size}/{GOMOKU_PUZZLES.length}</span>
         </div>
 
         {/* Difficulty tabs */}
