@@ -75,23 +75,37 @@ export function isDecisiveMove(board: number[][], row: number, col: number, ston
   return false;
 }
 
-const DECOY_CANDIDATES: [number, number, number][] = [
-  [1, 1, 2], [13, 13, 1], [1, 13, 1], [13, 1, 2],
-  [2, 12, 1], [12, 2, 2], [0, 7, 2], [14, 7, 1],
+// Cells scattered around the board edges, far from the center-based tactical
+// templates and from every difficulty-1/2 base position, used purely to fix
+// stone-count parity (never placed inside the tactical zone itself).
+const BALANCE_POOL: [number, number][] = [
+  [0, 0], [0, 4], [0, 8], [0, 12], [14, 0], [14, 4], [14, 8], [14, 12],
+  [4, 0], [8, 0], [4, 14], [8, 14], [1, 1], [1, 13], [13, 1], [13, 13],
+  [2, 12], [12, 2], [0, 7], [14, 7], [7, 0], [7, 14], [3, 13], [13, 3],
 ];
 
-// Add a couple of unrelated stones far from the tactical zone so the board
-// doesn't look like an obviously bare template.
-function withDecoys(stones: [number, number, number][], protectedCells: [number, number][], count = 2): [number, number, number][] {
+// It is Black's move in every puzzle here, which is only a reachable game
+// state if Black and White have placed the same number of stones so far.
+// Any position with e.g. 6 black stones and 1 white stone could never occur
+// from real alternating play. This tops up the minority color with extra
+// stones placed safely outside the tactical zone so the final position is
+// actually consistent with a real game record, not just a rigged diagram.
+function balanceStones(stones: [number, number, number][], protectedCells: [number, number][]): [number, number, number][] {
   const used = new Set(stones.map(([r, c]) => `${r},${c}`));
   for (const [r, c] of protectedCells) used.add(`${r},${c}`);
+  const black = stones.filter(([, , v]) => v === 1).length;
+  const white = stones.filter(([, , v]) => v === 2).length;
+  const needColor = black > white ? 2 : black < white ? 1 : 0;
+  let needCount = Math.abs(black - white);
   const result = [...stones];
-  let added = 0;
-  for (const [r, c, v] of DECOY_CANDIDATES) {
-    if (added >= count) break;
-    if (used.has(`${r},${c}`)) continue;
-    result.push([r, c, v]);
-    added++;
+  if (needColor === 0) return result;
+  for (const [r, c] of BALANCE_POOL) {
+    if (needCount <= 0) break;
+    const key = `${r},${c}`;
+    if (used.has(key)) continue;
+    result.push([r, c, needColor]);
+    used.add(key);
+    needCount--;
   }
   return result;
 }
@@ -118,7 +132,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 1,
-      board: place(withDecoys(stones, [[solR, solC]])),
+      board: place(balanceStones(stones, [[solR, solC]])),
       solution: [solR, solC],
       hint: '一端已被封堵，把子下在另一端即可五连获胜',
     });
@@ -142,7 +156,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 2,
-      board: place(withDecoys(stones, [[solR, solC]])),
+      board: place(balanceStones(stones, [[solR, solC]])),
       solution: [solR, solC],
       hint: '四子中间断了一个点，补上缺口即可五连',
     });
@@ -174,7 +188,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 3,
-      board: place(withDecoys(stones, protectedCells)),
+      board: place(balanceStones(stones, protectedCells)),
       solution: [T_R, T_C],
       hint: '冲四活三：这步棋同时形成一个冲四和一个活三，对手防不住两头',
     });
@@ -207,7 +221,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 4,
-      board: place(withDecoys(stones, protectedCells)),
+      board: place(balanceStones(stones, protectedCells)),
       solution: [T_R, T_C],
       hint: '双活三：这步棋同时做出两个活三，对手只能挡住一边',
     });
@@ -241,7 +255,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 5,
-      board: place(withDecoys(stones, protectedCells)),
+      board: place(balanceStones(stones, protectedCells)),
       solution: [T_R, T_C],
       hint: '双冲四：这步棋同时形成两个冲四，对手无法两头都堵',
     });
