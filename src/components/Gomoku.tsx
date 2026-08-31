@@ -138,15 +138,20 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     const p = currentPuzzle;
     if (!p) return;
 
-    if (row === p.solution[0] && col === p.solution[1]) {
-      // Correct move
-      const newBoard = board.map(r => [...r]) as Stone[][];
-      newBoard[row][col] = 1;
-      setBoard(newBoard);
+    // Try the move first: accept it if it's the designated solution OR if it
+    // actually produces a genuine 5-in-a-row win (some puzzles have more than
+    // one valid winning cell, e.g. an open four winnable from either end).
+    const trialBoard = board.map(r => [...r]) as Stone[][];
+    trialBoard[row][col] = 1;
+    const isDesignatedSolution = row === p.solution[0] && col === p.solution[1];
+    const isRealWin = checkWin(trialBoard, row, col);
+
+    if (isDesignatedSolution || isRealWin) {
+      setBoard(trialBoard);
       setLastMove([row, col]);
-      if (checkWin(newBoard, row, col)) {
+      if (isRealWin) {
         setWinner(1);
-        setWinLine(findWinLine(newBoard, row, col));
+        setWinLine(findWinLine(trialBoard, row, col));
         setPuzzleSolved(true);
         const newSolved = new Set(solvedPuzzles);
         newSolved.add(p.id);
