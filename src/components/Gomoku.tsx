@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useI18n } from '../lib/i18n';
 import { supabase } from '../lib/supabase';
-import { GOMOKU_PUZZLES, type Puzzle, isDecisiveMove } from '../lib/gomokuPuzzles';
+import { GOMOKU_PUZZLES, type Puzzle } from '../lib/gomokuPuzzles';
+import { findBestMove } from '../lib/gomokuAI';
 
 const BOARD_SIZE = 15;
 type Stone = 0 | 1 | 2; // 0=empty, 1=black, 2=white
@@ -68,6 +69,8 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     return new Set();
   });
   const [showHint, setShowHint] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [puzzleFailed, setPuzzleFailed] = useState(false);
   const currentPuzzle: Puzzle | null = GOMOKU_PUZZLES[puzzleIndex] || null;
 
   // PvP state
@@ -127,45 +130,56 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     setMoveHistory([]);
     setPuzzleSolved(false);
     setPuzzleError(false);
+    setPuzzleFailed(false);
+    setAiThinking(false);
     setShowHint(false);
     setMode('puzzle-game');
   }, []);
 
   const handlePuzzleClick = (row: number, col: number) => {
-    if (winner || puzzleSolved) return;
+    if (winner || puzzleSolved || puzzleFailed || aiThinking) return;
     if (board[row][col] !== 0) return;
 
     const p = currentPuzzle;
     if (!p) return;
 
-    // Accept the move if it's the designated solution, OR if it's a genuine
-    // 5-in-a-row, OR if it forms any other decisive tactic (open four,
-    // double-four, four+open-three combo, double open-three). This handles
-    // puzzles where more than one cell is equally winning (e.g. an open four
-    // can be completed from either end).
-    const trialBoard = board.map(r => [...r]) as Stone[][];
-    trialBoard[row][col] = 1;
-    const isDesignatedSolution = row === p.solution[0] && col === p.solution[1];
-    const isRealWin = checkWin(trialBoard, row, col);
-    const isDecisive = isRealWin || isDecisiveMove(trialBoard, row, col, 1);
+    // Free play: any empty cell is a legal move now. There is no more
+    // "designated solution" lookup — the player must actually walk the
+    // forced-win sequence out against a real opponent, and only an actual
+    // 5-in-a-row ends the puzzle in their favor.
+    const afterBlack = board.map(r => [...r]) as Stone[][];
+    afterBlack[row][col] = 1;
+    setBoard(afterBlack);
+    setLastMove([row, col]);
 
-    if (isDesignatedSolution || isDecisive) {
-      setBoard(trialBoard);
-      setLastMove([row, col]);
-      if (isRealWin) {
-        setWinner(1);
-        setWinLine(findWinLine(trialBoard, row, col));
-      }
+    if (checkWin(afterBlack, row, col)) {
+      setWinner(1);
+      setWinLine(findWinLine(afterBlack, row, col));
       setPuzzleSolved(true);
       const newSolved = new Set(solvedPuzzles);
       newSolved.add(p.id);
       setSolvedPuzzles(newSolved);
       saveSolved(newSolved);
-    } else {
-      // Wrong move
-      setPuzzleError(true);
-      setTimeout(() => setPuzzleError(false), 1000);
+      return;
     }
+
+    // White's turn: let the real minimax/alpha-beta engine respond.
+    setAiThinking(true);
+    setTimeout(() => {
+      const move = findBestMove(afterBlack, 2, 1, { timeBudgetMs: 1000, maxDepth: 6 });
+      if (!move) { setAiThinking(false); return; }
+      const [ar, ac] = move;
+      const afterWhite = afterBlack.map(r => [...r]) as Stone[][];
+      afterWhite[ar][ac] = 2;
+      setBoard(afterWhite);
+      setLastMove([ar, ac]);
+      setAiThinking(false);
+      if (checkWin(afterWhite, ar, ac)) {
+        setWinner(2);
+        setWinLine(findWinLine(afterWhite, ar, ac));
+        setPuzzleFailed(true);
+      }
+    }, 30);
   };
 
   // ─── Local PvP ───
@@ -525,11 +539,19 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
           <span className="w-16" />
         </div>
 
-        <p className={`text-sm mb-3 ${puzzleError ? 'text-red-400' : puzzleSolved ? 'text-emerald-400' : 'text-slate-400'}`}>
-          {puzzleError ? t('gomokuWrongMove') : puzzleSolved ? t('gomokuSolved') : t('gomokuFindWin')}
+        <p className={`text-sm mb-3 ${puzzleError ? 'text-red-400' : puzzleFailed ? 'text-red-400' : puzzleSolved ? 'text-emerald-400' : aiThinking ? 'text-amber-400' : 'text-slate-400'}`}>
+          {puzzleError
+            ? t('gomokuWrongMove')
+            : puzzleFailed
+            ? '⚠️ AI 反杀成功，残局失败'
+            : puzzleSolved
+            ? t('gomokuSolved')
+            : aiThinking
+            ? '🤔 AI 思考中…'
+            : t('gomokuFindWin')}
         </p>
 
-        {renderBoard(handlePuzzleClick, !puzzleSolved && !winner)}
+        {renderBoard(handlePuzzleClick, !puzzleSolved && !puzzleFailed && !aiThinking && !winner)}
 
         {/* Puzzle controls */}
         <div className="flex gap-2 mt-4">
@@ -541,7 +563,8 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
           </button>
           <button
             onClick={() => startPuzzle(puzzleIndex)}
-            className="text-xs px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+            disabled={aiThinking}
+            className="text-xs px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-400 hover:text-slate-200 disabled:opacity-30 transition-colors"
           >
             🔄 {t('gomokuRetry')}
           </button>
@@ -563,6 +586,13 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
           <div className="mt-4 text-center">
             <div className="text-3xl mb-2">🎉</div>
             <p className="text-sm text-emerald-400 font-medium">{t('gomokuSolved')}</p>
+          </div>
+        )}
+
+        {puzzleFailed && (
+          <div className="mt-4 text-center">
+            <div className="text-3xl mb-2">💥</div>
+            <p className="text-sm text-red-400 font-medium">AI 找到了反杀，点"重试"再来一次</p>
           </div>
         )}
       </div>

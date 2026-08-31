@@ -75,38 +75,96 @@ export function isDecisiveMove(board: number[][], row: number, col: number, ston
   return false;
 }
 
-// Cells scattered around the board edges, far from the center-based tactical
-// templates and from every difficulty-1/2 base position, used purely to fix
-// stone-count parity (never placed inside the tactical zone itself).
-const BALANCE_POOL: [number, number][] = [
-  [0, 0], [0, 4], [0, 8], [0, 12], [14, 0], [14, 4], [14, 8], [14, 12],
-  [4, 0], [8, 0], [4, 14], [8, 14], [1, 1], [1, 13], [13, 1], [13, 13],
-  [2, 12], [12, 2], [0, 7], [14, 7], [7, 0], [7, 14], [3, 13], [13, 3],
-];
+// Deterministic tiny PRNG so puzzle boards are stable across reloads.
+function mulberry32(seed: number) {
+  let s = seed | 0;
+  return function () {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-// It is Black's move in every puzzle here, which is only a reachable game
-// state if Black and White have placed the same number of stones so far.
-// Any position with e.g. 6 black stones and 1 white stone could never occur
-// from real alternating play. This tops up the minority color with extra
-// stones placed safely outside the tactical zone so the final position is
-// actually consistent with a real game record, not just a rigged diagram.
-function balanceStones(stones: [number, number, number][], protectedCells: [number, number][]): [number, number, number][] {
-  const used = new Set(stones.map(([r, c]) => `${r},${c}`));
+// It is Black's move in every puzzle here, which only reflects a reachable
+// game state if the board actually looks like both sides have been playing:
+// equal stone counts, and those stones spread out in plausible clusters
+// rather than two lone "decoy" stones tucked in the corners. This simulates
+// a short, semi-random game history — starting from a few scattered anchor
+// points and growing alternating-color clusters outward — that is layered
+// underneath the hand-verified tactical shape. Every cell reserved by the
+// tactical shape or by `protectedCells` (the empty squares the tactic needs
+// to stay open) is strictly off-limits, so the puzzle's solution is
+// unaffected no matter where the simulated stones land.
+function buildRealisticContext(
+  tacticalStones: [number, number, number][],
+  protectedCells: [number, number][],
+  seed: number,
+  targetPerSide = 7
+): [number, number, number][] {
+  const rand = mulberry32(seed);
+  const used = new Set<string>();
+  for (const [r, c] of tacticalStones) used.add(`${r},${c}`);
   for (const [r, c] of protectedCells) used.add(`${r},${c}`);
-  const black = stones.filter(([, , v]) => v === 1).length;
-  const white = stones.filter(([, , v]) => v === 2).length;
-  const needColor = black > white ? 2 : black < white ? 1 : 0;
-  let needCount = Math.abs(black - white);
-  const result = [...stones];
-  if (needColor === 0) return result;
-  for (const [r, c] of BALANCE_POOL) {
-    if (needCount <= 0) break;
-    const key = `${r},${c}`;
-    if (used.has(key)) continue;
-    result.push([r, c, needColor]);
-    used.add(key);
-    needCount--;
+
+  const black0 = tacticalStones.filter(([, , v]) => v === 1).length;
+  const white0 = tacticalStones.filter(([, , v]) => v === 2).length;
+  let needBlack = Math.max(0, targetPerSide - black0);
+  let needWhite = Math.max(0, targetPerSide - white0);
+
+  // Pick a few scattered anchor points, away from the tactical shape, to
+  // seed independent "skirmish" clusters elsewhere on the board.
+  const anchors: [number, number][] = [];
+  for (let attempts = 0; attempts < 200 && anchors.length < 3; attempts++) {
+    const r = 1 + Math.floor(rand() * (SIZE - 2));
+    const c = 1 + Math.floor(rand() * (SIZE - 2));
+    if (used.has(`${r},${c}`)) continue;
+    const tooClose = tacticalStones.some(([tr, tc]) => Math.abs(tr - r) <= 2 && Math.abs(tc - c) <= 2);
+    if (tooClose) continue;
+    anchors.push([r, c]);
   }
+  if (anchors.length === 0) anchors.push([1, 1]);
+
+  const result: [number, number, number][] = [];
+  const frontier: [number, number][] = [...anchors];
+  let colorTurn: 1 | 2 = rand() < 0.5 ? 1 : 2;
+  let guard = 0;
+
+  while ((needBlack > 0 || needWhite > 0) && guard < 500) {
+    guard++;
+    const color: 1 | 2 = needBlack > 0 && needWhite > 0 ? colorTurn : needBlack > 0 ? 1 : 2;
+
+    let placed = false;
+    for (let tries = 0; tries < 15 && !placed; tries++) {
+      const [br, bc] = frontier[Math.floor(rand() * frontier.length)];
+      const r = br + Math.floor(rand() * 5) - 2;
+      const c = bc + Math.floor(rand() * 5) - 2;
+      if (!inBounds(r, c)) continue;
+      const key = `${r},${c}`;
+      if (used.has(key)) continue;
+      used.add(key);
+      result.push([r, c, color]);
+      frontier.push([r, c]);
+      placed = true;
+    }
+    if (!placed) {
+      // Fallback: drop anywhere free so we never get stuck short of target.
+      for (let i = 0; i < 300; i++) {
+        const r = Math.floor(rand() * SIZE), c = Math.floor(rand() * SIZE);
+        const key = `${r},${c}`;
+        if (used.has(key)) continue;
+        used.add(key);
+        result.push([r, c, color]);
+        frontier.push([r, c]);
+        placed = true;
+        break;
+      }
+      if (!placed) break;
+    }
+    if (color === 1) needBlack--; else needWhite--;
+    colorTurn = color === 1 ? 2 : 1;
+  }
+
   return result;
 }
 
@@ -132,7 +190,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 1,
-      board: place(balanceStones(stones, [[solR, solC]])),
+      board: place([...stones, ...buildRealisticContext(stones, [[solR, solC]], id)]),
       solution: [solR, solC],
       hint: '一端已被封堵，把子下在另一端即可五连获胜',
     });
@@ -156,7 +214,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 2,
-      board: place(balanceStones(stones, [[solR, solC]])),
+      board: place([...stones, ...buildRealisticContext(stones, [[solR, solC]], id)]),
       solution: [solR, solC],
       hint: '四子中间断了一个点，补上缺口即可五连',
     });
@@ -188,7 +246,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 3,
-      board: place(balanceStones(stones, protectedCells)),
+      board: place([...stones, ...buildRealisticContext(stones, protectedCells, id)]),
       solution: [T_R, T_C],
       hint: '冲四活三：这步棋同时形成一个冲四和一个活三，对手防不住两头',
     });
@@ -221,7 +279,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 4,
-      board: place(balanceStones(stones, protectedCells)),
+      board: place([...stones, ...buildRealisticContext(stones, protectedCells, id)]),
       solution: [T_R, T_C],
       hint: '双活三：这步棋同时做出两个活三，对手只能挡住一边',
     });
@@ -255,7 +313,7 @@ function makePuzzles(): Puzzle[] {
     puzzles.push({
       id: id++,
       difficulty: 5,
-      board: place(balanceStones(stones, protectedCells)),
+      board: place([...stones, ...buildRealisticContext(stones, protectedCells, id)]),
       solution: [T_R, T_C],
       hint: '双冲四：这步棋同时形成两个冲四，对手无法两头都堵',
     });
