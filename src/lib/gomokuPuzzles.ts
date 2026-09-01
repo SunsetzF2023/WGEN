@@ -87,22 +87,23 @@ function mulberry32(seed: number) {
 }
 
 // It is Black's move in every puzzle here, which only reflects a reachable
-// game state if the board actually looks like one real, tangled local fight
-// — the way an actual gomoku endgame screenshot looks: a single dense knot
-// of interlocked black/white stones, not the tactical shape floating alone
-// with a separate decoy pile parked somewhere else on the board. So the
-// extra stones are grown directly OUT of the tactical shape itself: the
-// frontier starts as the tactical stones, and each new stone lands
-// immediately adjacent (radius 1) to an existing stone in the cluster,
-// alternating colors, until both sides reach `targetPerSide`. Every cell
-// reserved by `protectedCells` (the empty squares the tactic needs to stay
-// open) is strictly off-limits, so the solution is unaffected no matter how
-// tightly the surrounding stones pack in.
+// game state if the board actually looks like a real gomoku endgame
+// screenshot: one solid, tightly packed knot of interlocked black/white
+// stones with almost no gaps in the middle, not the tactical shape floating
+// alone next to a separate decoy pile. This is grown as a flood fill: a
+// "boundary" of empty cells touching the current cluster is maintained, and
+// each new stone is placed on a random boundary cell (alternating colors),
+// which is what produces a solid packed blob instead of a sparse scatter —
+// pockets next to already-placed stones always get filled in before the
+// cluster spreads further outward. Every cell reserved by `protectedCells`
+// (the empty squares the tactic needs to stay open) is never added to the
+// boundary, so the solution is unaffected no matter how solid the rest of
+// the knot becomes.
 function buildRealisticContext(
   tacticalStones: [number, number, number][],
   protectedCells: [number, number][],
   seed: number,
-  targetPerSide = 7
+  targetPerSide = 9
 ): [number, number, number][] {
   const rand = mulberry32(seed);
   const used = new Set<string>();
@@ -114,48 +115,75 @@ function buildRealisticContext(
   let needBlack = Math.max(0, targetPerSide - black0);
   let needWhite = Math.max(0, targetPerSide - white0);
 
+  const colorAt = new Map<string, 1 | 2>();
+  for (const [r, c, v] of tacticalStones) colorAt.set(`${r},${c}`, v as 1 | 2);
+
+  // Never allow a filler stone to accidentally complete a 5-in-a-row for
+  // either color — the dense packing means this is a real risk once the
+  // knot gets big, and it would end the game before the puzzle even starts.
+  const wouldCreateFive = (r: number, c: number, color: 1 | 2): boolean => {
+    for (const [dr, dc] of DIRS) {
+      let count = 1;
+      let rr = r + dr, cc = c + dc;
+      while (inBounds(rr, cc) && colorAt.get(`${rr},${cc}`) === color) { count++; rr += dr; cc += dc; }
+      rr = r - dr; cc = c - dc;
+      while (inBounds(rr, cc) && colorAt.get(`${rr},${cc}`) === color) { count++; rr -= dr; cc -= dc; }
+      if (count >= 5) return true;
+    }
+    return false;
+  };
+
   const result: [number, number, number][] = [];
-  const frontier: [number, number][] = tacticalStones.map(([r, c]) => [r, c]);
+  const boundary = new Map<string, [number, number]>();
+  const addBoundaryAround = (r: number, c: number) => {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        const rr = r + dr, cc = c + dc;
+        if (!inBounds(rr, cc)) continue;
+        const key = `${rr},${cc}`;
+        if (!used.has(key) && !boundary.has(key)) boundary.set(key, [rr, cc]);
+      }
+    }
+  };
+  for (const [r, c] of tacticalStones) addBoundaryAround(r, c);
+
   let colorTurn: 1 | 2 = rand() < 0.5 ? 1 : 2;
   let guard = 0;
 
-  while ((needBlack > 0 || needWhite > 0) && guard < 500) {
+  while ((needBlack > 0 || needWhite > 0) && boundary.size > 0 && guard < 3000) {
     guard++;
-    const color: 1 | 2 = needBlack > 0 && needWhite > 0 ? colorTurn : needBlack > 0 ? 1 : 2;
+    let color: 1 | 2 = needBlack > 0 && needWhite > 0 ? colorTurn : needBlack > 0 ? 1 : 2;
+    const keys = [...boundary.keys()];
+    const startIdx = Math.floor(rand() * keys.length);
 
-    let placed = false;
-    // Radius-1 growth (mostly) keeps everything touching/interlocked like a
-    // real dense mid-game knot; an occasional radius-2 hop lets the cluster
-    // widen a little instead of becoming a single unbroken blob.
-    for (let tries = 0; tries < 25 && !placed; tries++) {
-      const [br, bc] = frontier[Math.floor(rand() * frontier.length)];
-      const radius = rand() < 0.8 ? 1 : 2;
-      const dr = Math.floor(rand() * (radius * 2 + 1)) - radius;
-      const dc = Math.floor(rand() * (radius * 2 + 1)) - radius;
-      if (dr === 0 && dc === 0) continue;
-      const r = br + dr, c = bc + dc;
-      if (!inBounds(r, c)) continue;
-      const key = `${r},${c}`;
-      if (used.has(key)) continue;
-      used.add(key);
-      result.push([r, c, color]);
-      frontier.push([r, c]);
-      placed = true;
+    let foundKey: string | null = null;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[(startIdx + i) % keys.length];
+      const [r, c] = boundary.get(k)!;
+      if (!wouldCreateFive(r, c, color)) { foundKey = k; break; }
     }
-    if (!placed) {
-      // Fallback: drop anywhere free so we never get stuck short of target.
-      for (let i = 0; i < 300; i++) {
-        const r = Math.floor(rand() * SIZE), c = Math.floor(rand() * SIZE);
-        const key = `${r},${c}`;
-        if (used.has(key)) continue;
-        used.add(key);
-        result.push([r, c, color]);
-        frontier.push([r, c]);
-        placed = true;
-        break;
+    if (!foundKey && needBlack > 0 && needWhite > 0) {
+      const other: 1 | 2 = color === 1 ? 2 : 1;
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[(startIdx + i) % keys.length];
+        const [r, c] = boundary.get(k)!;
+        if (!wouldCreateFive(r, c, other)) { foundKey = k; color = other; break; }
       }
-      if (!placed) break;
     }
+    if (!foundKey) {
+      // Every boundary cell would complete a five right now — extremely
+      // rare, but safe to just retire one boundary cell and keep going.
+      boundary.delete(keys[0]);
+      continue;
+    }
+
+    const [r, c] = boundary.get(foundKey)!;
+    boundary.delete(foundKey);
+    used.add(foundKey);
+    colorAt.set(foundKey, color);
+    result.push([r, c, color]);
+    addBoundaryAround(r, c);
     if (color === 1) needBlack--; else needWhite--;
     colorTurn = color === 1 ? 2 : 1;
   }
