@@ -275,7 +275,7 @@ function countStones(board) {
 }
 
 // ─── Self-play generation ───
-const NUM_GAMES = 70;
+const NUM_GAMES = 150;
 const MAX_PLIES = 44;
 const CHECK_FROM_PLY = 8;
 const CHECK_EVERY = 2;
@@ -327,23 +327,31 @@ console.log(`Self-play done. ${candidates.length} candidates found in ${(Date.no
 // ─── Bucket into difficulty tiers 1-5 ───
 // minDepth directly encodes how many forced Black moves the verification
 // search needed: depth2→1 move, depth3→2 moves, depth5→3 moves, depth7→4
-// moves. The "1 move" bucket tends to dominate (self-play often leaves an
-// outright winning move unpunished), so it is further split by how many
-// stones are already on the board — a cluttered board hides even an
-// immediate win much better than a sparse one, giving a genuine tier1/tier2
-// split instead of an arbitrary one.
+// moves.
+//
+// The "1 move" bucket (an outright winning move already sitting on the
+// board, e.g. a plain four-in-a-row you just complete) is DROPPED entirely
+// — it requires zero calculation to spot and was the exact complaint that
+// early tiers had no depth of thought. Every puzzle now needs at least 2
+// forced Black moves. The 2-move and 4-move buckets are each further split
+// by how many stones are already on the board — a cluttered board hides
+// even a short combo much better than a sparse one — giving a genuine
+// tier1/tier2 and tier4/tier5 split instead of an arbitrary one.
 const byMoves = { 1: [], 2: [], 3: [], 4: [] };
 const movesForDepth = { 2: 1, 3: 2, 5: 3, 7: 4 };
 for (const c of candidates) byMoves[movesForDepth[c.minDepth]].push(c);
+console.log(`(discarding ${byMoves[1].length} trivial 1-move-win candidates)`);
 
-const oneMove = [...byMoves[1]].sort((a, b) => a.stones - b.stones);
-const splitAt = Math.ceil(oneMove.length / 2);
+const twoMove = [...byMoves[2]].sort((a, b) => a.stones - b.stones);
+const twoSplitAt = Math.ceil(twoMove.length / 2);
+const fourMove = [...byMoves[4]].sort((a, b) => a.stones - b.stones);
+const fourSplitAt = Math.ceil(fourMove.length / 2);
 const byTier = {
-  1: oneMove.slice(0, splitAt),
-  2: oneMove.slice(splitAt),
-  3: byMoves[2],
-  4: byMoves[3],
-  5: byMoves[4],
+  1: twoMove.slice(0, twoSplitAt),
+  2: twoMove.slice(twoSplitAt),
+  3: byMoves[3],
+  4: fourMove.slice(0, fourSplitAt),
+  5: fourMove.slice(fourSplitAt),
 };
 for (const c of candidates) delete c.tier;
 for (const t of Object.keys(byTier)) {
