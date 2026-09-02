@@ -60,7 +60,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
   // Puzzle state
   const [puzzleIndex, setPuzzleIndex] = useState(0);
   const [puzzleSolved, setPuzzleSolved] = useState(false);
-  const [puzzleError, setPuzzleError] = useState(false);
+  const [puzzleDraw, setPuzzleDraw] = useState(false);
   const [solvedPuzzles, setSolvedPuzzles] = useState<Set<number>>(() => {
     try {
       const raw = localStorage.getItem('gomoku_solved');
@@ -68,9 +68,10 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     } catch { /* ignore */ }
     return new Set();
   });
-  const [showHint, setShowHint] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [puzzleFailed, setPuzzleFailed] = useState(false);
+  const [hintMove, setHintMove] = useState<[number, number] | null>(null);
+  const [hintLoading, setHintLoading] = useState(false);
   const currentPuzzle: Puzzle | null = GOMOKU_PUZZLES[puzzleIndex] || null;
 
   // PvP state
@@ -129,24 +130,27 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
     setLastMove(null);
     setMoveHistory([]);
     setPuzzleSolved(false);
-    setPuzzleError(false);
+    setPuzzleDraw(false);
     setPuzzleFailed(false);
     setAiThinking(false);
-    setShowHint(false);
+    setHintMove(null);
     setMode('puzzle-game');
   }, []);
 
+  const isBoardFull = (b: Stone[][]) => b.every(row => row.every(cell => cell !== 0));
+
   const handlePuzzleClick = (row: number, col: number) => {
-    if (winner || puzzleSolved || puzzleFailed || aiThinking) return;
+    if (winner || puzzleSolved || puzzleDraw || puzzleFailed || aiThinking) return;
     if (board[row][col] !== 0) return;
 
     const p = currentPuzzle;
     if (!p) return;
+    setHintMove(null);
 
-    // Free play: any empty cell is a legal move now. There is no more
-    // "designated solution" lookup — the player must actually walk the
-    // forced-win sequence out against a real opponent, and only an actual
-    // 5-in-a-row ends the puzzle in their favor.
+    // Free play: any empty cell is a legal move. There is no designated
+    // "solution" — the player is free to try any idea, and only what
+    // actually happens on the board (a real 5-in-a-row, a real loss, or a
+    // full board) decides the outcome, exactly like a real game record.
     const afterBlack = board.map(r => [...r]) as Stone[][];
     afterBlack[row][col] = 1;
     setBoard(afterBlack);
@@ -162,8 +166,15 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       saveSolved(newSolved);
       return;
     }
+    if (isBoardFull(afterBlack)) {
+      setPuzzleDraw(true);
+      return;
+    }
 
-    // White's turn: let the real minimax/alpha-beta engine respond.
+    // White's turn: let the real minimax/alpha-beta engine respond — the
+    // exact same engine used to verify the puzzle offline, so if the player
+    // strays off a genuine forced-win line, this opponent can and will
+    // punish it for a real loss, not a scripted one.
     setAiThinking(true);
     setTimeout(() => {
       const move = findBestMove(afterBlack, 2, 1, { timeBudgetMs: 1000, maxDepth: 6 });
@@ -178,8 +189,25 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
         setWinner(2);
         setWinLine(findWinLine(afterWhite, ar, ac));
         setPuzzleFailed(true);
+        return;
+      }
+      if (isBoardFull(afterWhite)) {
+        setPuzzleDraw(true);
       }
     }, 30);
+  };
+
+  // Live "求助": ask the real engine what IT would play here, rather than
+  // revealing a pre-baked answer — since there is no single correct answer,
+  // this is only a suggestion the player is free to ignore.
+  const requestHint = () => {
+    if (winner || puzzleSolved || puzzleDraw || puzzleFailed || aiThinking || hintLoading) return;
+    setHintLoading(true);
+    setTimeout(() => {
+      const move = findBestMove(board, 1, 2, { timeBudgetMs: 600, maxDepth: 4 });
+      setHintMove(move);
+      setHintLoading(false);
+    }, 20);
   };
 
   // ─── Local PvP ───
@@ -227,6 +255,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       })
       .on('broadcast', { event: 'restart' }, () => {
         resetGame();
+        setPvp(prev => prev ? { ...prev, myColor: prev.myColor === 1 ? 2 : 1 } : prev);
       })
       .on('broadcast', { event: 'leave' }, () => {
         setPvpError(t('gomokuOpponentLeft'));
@@ -267,6 +296,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       })
       .on('broadcast', { event: 'restart' }, () => {
         resetGame();
+        setPvp(prev => prev ? { ...prev, myColor: prev.myColor === 1 ? 2 : 1 } : prev);
       })
       .on('broadcast', { event: 'leave' }, () => {
         setPvpError(t('gomokuOpponentLeft'));
@@ -339,6 +369,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
   const handleOnlineRestart = useCallback(() => {
     resetGame();
     setCurrentPlayer(1);
+    setPvp(prev => prev ? { ...prev, myColor: prev.myColor === 1 ? 2 : 1 } : prev);
     channelRef.current?.send({ type: 'broadcast', event: 'restart', payload: {} });
   }, [resetGame]);
 
@@ -361,7 +392,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
   }, []);
 
   // ─── Board rendering ───
-  const renderBoard = (onCellClick: (r: number, c: number) => void, interactive: boolean) => {
+  const renderBoard = (onCellClick: (r: number, c: number) => void, interactive: boolean, hintCell?: [number, number] | null) => {
     const cellSize = 28;
     const padding = 16;
     const totalSize = cellSize * (BOARD_SIZE - 1) + padding * 2;
@@ -395,18 +426,26 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
           {board.map((row, r) =>
             row.map((cell, c) => {
               if (cell === 0) {
+                const isHint = hintCell && hintCell[0] === r && hintCell[1] === c;
                 return interactive ? (
                   <button
                     key={`${r}-${c}`}
                     onClick={() => onCellClick(r, c)}
-                    className="absolute rounded-full hover:bg-black/10 transition-colors"
+                    className="absolute rounded-full hover:bg-black/10 transition-colors flex items-center justify-center"
                     style={{
                       left: padding + 6 + c * cellSize - cellSize / 2 + 2,
                       top: padding + 6 + r * cellSize - cellSize / 2 + 2,
                       width: cellSize - 4,
                       height: cellSize - 4,
                     }}
-                  />
+                  >
+                    {isHint && (
+                      <span
+                        className="block rounded-full animate-pulse"
+                        style={{ width: '60%', height: '60%', background: 'rgba(245,158,11,0.75)', boxShadow: '0 0 6px 2px rgba(245,158,11,0.6)' }}
+                      />
+                    )}
+                  </button>
                 ) : null;
               }
               const isLast = lastMove && lastMove[0] === r && lastMove[1] === c;
@@ -539,27 +578,28 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
           <span className="w-16" />
         </div>
 
-        <p className={`text-sm mb-3 ${puzzleError ? 'text-red-400' : puzzleFailed ? 'text-red-400' : puzzleSolved ? 'text-emerald-400' : aiThinking ? 'text-amber-400' : 'text-slate-400'}`}>
-          {puzzleError
-            ? t('gomokuWrongMove')
-            : puzzleFailed
-            ? '⚠️ AI 反杀成功，残局失败'
+        <p className={`text-sm mb-3 ${puzzleFailed ? 'text-red-400' : puzzleDraw ? 'text-amber-400' : puzzleSolved ? 'text-emerald-400' : aiThinking ? 'text-amber-400' : 'text-slate-400'}`}>
+          {puzzleFailed
+            ? '⚠️ AI 找到了反杀，对局失败'
+            : puzzleDraw
+            ? '🤝 棋盘下满，双方战成和局'
             : puzzleSolved
             ? t('gomokuSolved')
             : aiThinking
             ? '🤔 AI 思考中…'
-            : t('gomokuFindWin')}
+            : '黑方有必胜下法，自由落子找出来 —— 没有唯一答案，走错真会输'}
         </p>
 
-        {renderBoard(handlePuzzleClick, !puzzleSolved && !puzzleFailed && !aiThinking && !winner)}
+        {renderBoard(handlePuzzleClick, !puzzleSolved && !puzzleDraw && !puzzleFailed && !aiThinking && !winner, hintMove)}
 
         {/* Puzzle controls */}
         <div className="flex gap-2 mt-4">
           <button
-            onClick={() => setShowHint(!showHint)}
-            className="text-xs px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+            onClick={requestHint}
+            disabled={aiThinking || hintLoading || puzzleSolved || puzzleDraw || puzzleFailed}
+            className="text-xs px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-400 hover:text-slate-200 disabled:opacity-30 transition-colors"
           >
-            💡 {t('gomokuHint')}
+            💡 {hintLoading ? '思考中…' : t('gomokuHint')}
           </button>
           <button
             onClick={() => startPuzzle(puzzleIndex)}
@@ -578,14 +618,23 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
           )}
         </div>
 
-        {showHint && (
-          <p className="text-xs text-amber-400 mt-3 max-w-md text-center">{currentPuzzle.hint}</p>
+        {hintMove && !puzzleSolved && !puzzleDraw && !puzzleFailed && (
+          <p className="text-xs text-amber-400 mt-3 max-w-md text-center">
+            引擎建议：棋盘上高亮的位置只是它的判断，不代表唯一解，你可以走别的路
+          </p>
         )}
 
         {puzzleSolved && (
           <div className="mt-4 text-center">
             <div className="text-3xl mb-2">🎉</div>
             <p className="text-sm text-emerald-400 font-medium">{t('gomokuSolved')}</p>
+          </div>
+        )}
+
+        {puzzleDraw && (
+          <div className="mt-4 text-center">
+            <div className="text-3xl mb-2">🤝</div>
+            <p className="text-sm text-amber-400 font-medium">和局，点"重试"再挑战一次这条必胜线</p>
           </div>
         )}
 
