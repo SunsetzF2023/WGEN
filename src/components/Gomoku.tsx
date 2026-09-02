@@ -13,7 +13,15 @@ type PvPState = {
   myColor: Stone; // 1=black, 2=white
   opponentName: string;
   opponentReady: boolean;
+  roundIndex: number; // increments each rematch; color is derived from this, not toggled
 };
+
+// Derived (not toggled) so it's idempotent no matter how restart messages are
+// ordered or duplicated: round 0 = host black, round 1 = host white, etc.
+function colorForRound(isHost: boolean, roundIndex: number): Stone {
+  const hostIsBlack = roundIndex % 2 === 0;
+  return hostIsBlack === isHost ? 1 : 2;
+}
 
 function emptyBoard(): Stone[][] {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0) as Stone[]);
@@ -239,6 +247,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       myColor: 1, // host plays black
       opponentName: '',
       opponentReady: false,
+      roundIndex: 0,
     });
     setPvpWaiting(true);
     resetGame();
@@ -253,9 +262,13 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       .on('broadcast', { event: 'move' }, (msg: { payload: { row: number; col: number } }) => {
         setOpponentMove([msg.payload.row, msg.payload.col]);
       })
-      .on('broadcast', { event: 'restart' }, () => {
+      .on('broadcast', { event: 'restart' }, (msg: { payload: { roundIndex: number } }) => {
         resetGame();
-        setPvp(prev => prev ? { ...prev, myColor: prev.myColor === 1 ? 2 : 1 } : prev);
+        setPvp(prev => {
+          if (!prev) return prev;
+          const roundIndex = Math.max(prev.roundIndex, msg.payload.roundIndex);
+          return { ...prev, roundIndex, myColor: colorForRound(prev.isHost, roundIndex) };
+        });
       })
       .on('broadcast', { event: 'leave' }, () => {
         setPvpError(t('gomokuOpponentLeft'));
@@ -280,6 +293,7 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       myColor: 2, // guest plays white
       opponentName: 'Host',
       opponentReady: true,
+      roundIndex: 0,
     });
     resetGame();
     setMode('online-game');
@@ -294,9 +308,13 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
       .on('broadcast', { event: 'move' }, (msg: { payload: { row: number; col: number } }) => {
         setOpponentMove([msg.payload.row, msg.payload.col]);
       })
-      .on('broadcast', { event: 'restart' }, () => {
+      .on('broadcast', { event: 'restart' }, (msg: { payload: { roundIndex: number } }) => {
         resetGame();
-        setPvp(prev => prev ? { ...prev, myColor: prev.myColor === 1 ? 2 : 1 } : prev);
+        setPvp(prev => {
+          if (!prev) return prev;
+          const roundIndex = Math.max(prev.roundIndex, msg.payload.roundIndex);
+          return { ...prev, roundIndex, myColor: colorForRound(prev.isHost, roundIndex) };
+        });
       })
       .on('broadcast', { event: 'leave' }, () => {
         setPvpError(t('gomokuOpponentLeft'));
@@ -369,9 +387,11 @@ export function Gomoku({ onExit }: { onExit: () => void }) {
   const handleOnlineRestart = useCallback(() => {
     resetGame();
     setCurrentPlayer(1);
-    setPvp(prev => prev ? { ...prev, myColor: prev.myColor === 1 ? 2 : 1 } : prev);
-    channelRef.current?.send({ type: 'broadcast', event: 'restart', payload: {} });
-  }, [resetGame]);
+    if (!pvp) return;
+    const roundIndex = pvp.roundIndex + 1;
+    setPvp(prev => prev ? { ...prev, roundIndex, myColor: colorForRound(prev.isHost, roundIndex) } : prev);
+    channelRef.current?.send({ type: 'broadcast', event: 'restart', payload: { roundIndex } });
+  }, [resetGame, pvp]);
 
   const leaveRoom = useCallback(() => {
     channelRef.current?.send({ type: 'broadcast', event: 'leave', payload: {} });
