@@ -253,8 +253,6 @@ export const CODEX_REWARD: Record<Rarity, number> = {
   仙阶: 60000,
 };
 
-export const MAX_EQUIPPED = 3;
-
 /** Spirit stones refunded for selling an owned technique (50% of cumulative investment). */
 export function sellValueFor(techniqueId: string, currentLevel: number): number {
   const def = TECHNIQUE_MAP[techniqueId];

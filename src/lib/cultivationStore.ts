@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import {
   levelForExp, expForLevel, statsForLevel, idleRatesForLevel,
-  realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP, MAX_EQUIPPED,
+  realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP,
   rollMarketOffers, MARKET_REFRESH_COST, CODEX_REWARD, sellValueFor,
   type BuildingId, type BuildingLevels, DEFAULT_BUILDING_LEVELS,
   buildingCost, buildingRateMultiplier, SKY_WORKSHOP_WEIGHT_PER_LEVEL,
@@ -336,8 +336,7 @@ export function toBattleFighter(c: Cultivator): BattleFighter {
   const level = cultivatorLevel(c);
   const equipped: OwnedTechnique[] = c.equipped
     .map((id) => c.techniques.find((t) => t.id === id))
-    .filter((t): t is OwnedTechnique => !!t)
-    .slice(0, MAX_EQUIPPED);
+    .filter((t): t is OwnedTechnique => !!t);
   return {
     userId: c.ownerId,
     name: c.name,
@@ -446,7 +445,6 @@ export function toggleEquipped(c: Cultivator, techniqueId: string): Cultivator {
   if (isEquipped) {
     return { ...c, equipped: c.equipped.filter((id) => id !== techniqueId) };
   }
-  if (c.equipped.length >= MAX_EQUIPPED) return c;
   return { ...c, equipped: [...c.equipped, techniqueId] };
 }
 

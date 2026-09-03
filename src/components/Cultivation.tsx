@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { signInWithGitHub } from '../lib/supabase';
-import { TECHNIQUE_MAP, MAX_EQUIPPED, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD } from '../lib/cultivationData';
+import { TECHNIQUE_MAP, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD } from '../lib/cultivationData';
 import {
   type Cultivator, type BattleLogRow,
   loadOrCreateMyCultivator, saveCultivator, loadRoster,
@@ -388,7 +388,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center justify-between transition-colors"
           >
             <span>📜 已修功法</span>
-            <span className="text-xs text-slate-400">已修 {me.techniques.length} · 已装备 {me.equipped.length}/{MAX_EQUIPPED}</span>
+            <span className="text-xs text-slate-400">已修 {me.techniques.length} · 已装备 {me.equipped.length}</span>
           </button>
           <button
             onClick={() => setView('codex')}
@@ -483,7 +483,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
         <CultivationHeader title="📜 已修功法" onBack={() => setView('dashboard')} onExit={onExit} />
         <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
-          所有已修功法均提供被动属性加成（直接叠加，学得越多越强）。装备 {MAX_EQUIPPED} 门用于对战，帝阶以上功法附带特殊战斗效果（连击/复活/替死）。
+          所有已修功法均提供被动属性加成（直接叠加，学得越多越强）。装备功法用于对战出招，帝阶以上功法附带特殊战斗效果（连击/复活/替死）。装备数量不限。
         </p>
         {me.techniques.length === 0 ? (
           <p className="text-sm text-slate-500 mt-8">尚未修习任何功法，去坊市看看吧。</p>
@@ -521,7 +521,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
                     )}
                     <button
                       onClick={() => handleToggleEquip(tq.id)}
-                      disabled={busy || (!isEquipped && me.equipped.length >= MAX_EQUIPPED)}
+                      disabled={busy}
                       className={`text-xs px-3 py-1.5 rounded-lg disabled:opacity-30 transition-colors ${
                         isEquipped ? 'bg-red-900/40 hover:bg-red-900/60 text-red-300' : 'bg-emerald-700/40 hover:bg-emerald-700/60 text-emerald-300'
                       }`}
