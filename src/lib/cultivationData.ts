@@ -46,7 +46,7 @@ export interface Technique {
   maxLevel: number;
 }
 
-export const TECHNIQUES: Technique[] = [
+const RAW_TECHNIQUES: Technique[] = [
   // ─── 黄阶：坊市常见货色，人人可学 ───
   {
     id: 'basic-strike', name: '黑虎拳', type: '拳法', rarity: '黄阶',
@@ -196,6 +196,16 @@ export const TECHNIQUES: Technique[] = [
     baseMultiplier: 1.85, multiplierPerLevel: 0.15, learnCost: 640, upgradeCost: 185, maxLevel: 10,
   },
 ];
+
+// Prices are scaled up from the raw table so they stay balanced against the
+// boosted idle production rates below (see idleRatesForLevel).
+const PRICE_MULTIPLIER = 2;
+
+export const TECHNIQUES: Technique[] = RAW_TECHNIQUES.map((t) => ({
+  ...t,
+  learnCost: Math.round(t.learnCost * PRICE_MULTIPLIER),
+  upgradeCost: Math.round(t.upgradeCost * PRICE_MULTIPLIER),
+}));
 
 export const TECHNIQUE_MAP: Record<string, Technique> = Object.fromEntries(
   TECHNIQUES.map((t) => [t.id, t])
@@ -347,11 +357,17 @@ export function statsForLevel(level: number): BaseStats {
   };
 }
 
-/** Idle gains per hour of real time, scaling with level. */
+// Idle rates scale with level AND with realm tier (same breakthrough tiers used by
+// expForLevel), so production keeps pace with the ever-steeper exp/price curve instead
+// of grinding to a crawl in the later realms.
+const IDLE_TIER_STEP = 0.35;
+
+/** Idle gains per hour of real time, scaling with level and realm tier. */
 export function idleRatesForLevel(level: number): { expPerHour: number; stonesPerHour: number } {
+  const tierBoost = 1 + IDLE_TIER_STEP * realmTierIndex(level);
   return {
-    expPerHour: Math.round(30 + level * 6),
-    stonesPerHour: Math.round(8 + level * 1.8),
+    expPerHour: Math.round((60 + level * 14) * tierBoost),
+    stonesPerHour: Math.round((15 + level * 3.5) * tierBoost),
   };
 }
 
@@ -360,7 +376,7 @@ export const MAX_OFFLINE_HOURS = 24;
 // ─── 坊市 (Market) ───
 
 export const MARKET_SLOT_COUNT = 6;
-export const MARKET_REFRESH_COST = 30;
+export const MARKET_REFRESH_COST = 60;
 
 /** Highest rarity currently obtainable in the 坊市 for this level (i.e. this realm's "best available" tier). */
 export function topUnlockedRarity(level: number): Rarity | null {
@@ -410,9 +426,9 @@ export interface BuildingDef {
 }
 
 export const BUILDINGS: BuildingDef[] = [
-  { id: 'spirit-hall', name: '采灵殿', description: '离线灵石获取速率 +1%/级', baseCost: 40, costGrowth: 1.15 },
-  { id: 'scripture-pavilion', name: '藏经阁', description: '离线修为获取速率 +1%/级', baseCost: 40, costGrowth: 1.15 },
-  { id: 'sky-workshop', name: '天工阁', description: '坊市刷出「当前境界最高品质功法」的概率提升', baseCost: 60, costGrowth: 1.18 },
+  { id: 'spirit-hall', name: '采灵殿', description: '离线灵石获取速率 +1%/级', baseCost: 80, costGrowth: 1.15 },
+  { id: 'scripture-pavilion', name: '藏经阁', description: '离线修为获取速率 +1%/级', baseCost: 80, costGrowth: 1.15 },
+  { id: 'sky-workshop', name: '天工阁', description: '坊市刷出「当前境界最高品质功法」的概率提升', baseCost: 120, costGrowth: 1.18 },
 ];
 
 export const BUILDING_MAP: Record<BuildingId, BuildingDef> = Object.fromEntries(
