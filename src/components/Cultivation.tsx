@@ -926,18 +926,11 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
         <CultivationHeader title="📰 江湖名录" onBack={() => setView('dashboard')} onExit={onExit} />
         <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
-          江湖风云变幻，恩怨情仇不断。你和朋友的名字也可能出现在其中。
+          江湖风云变幻，恩怨情仇不断。你和朋友的名字也可能出现在其中。每次进入江湖名录，新的江湖消息自动生成。
         </p>
-        <button
-          onClick={() => refreshJianghu()}
-          disabled={busy}
-          className="mb-3 text-xs px-4 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-30 text-white font-medium transition-colors"
-        >
-          🔄 刷新江湖消息
-        </button>
         <div className="w-full max-w-md space-y-2 pb-4">
           {jianghuEvents.length === 0 ? (
-            <p className="text-sm text-slate-500 mt-8 text-center">暂无江湖消息，刷新看看。</p>
+            <p className="text-sm text-slate-500 mt-8 text-center">暂无江湖消息。</p>
           ) : jianghuEvents.map((ev) => {
             const myEffect = ev.effects.find((e) => e.playerName === user?.name);
             return (
