@@ -113,14 +113,19 @@ export async function saveCultivator(c: Cultivator): Promise<boolean> {
   return true;
 }
 
-/** Public roster of all cultivators (for the challenge list), excluding self. */
+/** Public roster of all cultivators (for the challenge list), excluding self.
+ *  Idle gains are computed on-the-fly for each cultivator so that offline players'
+ *  stats (exp, level, spirit stones) appear up-to-date even if they haven't logged in. */
 export async function loadRoster(excludeUserId: string): Promise<Cultivator[]> {
   const { data, error } = await supabase.from(CULTIVATORS_TABLE).select('*').neq('owner_id', excludeUserId);
   if (error) {
     console.error('[cultivation] loadRoster:', error);
     return [];
   }
-  return (data || []).map(rowToCultivator);
+  return (data || []).map(rowToCultivator).map((c) => {
+    const gains = computeIdleGains(c);
+    return gains.exp > 0 || gains.spiritStones > 0 ? applyIdleGains(c, gains) : c;
+  });
 }
 
 // ─── Offline idle gains ───
