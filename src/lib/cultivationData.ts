@@ -393,12 +393,12 @@ export interface BaseStats {
 
 export function statsForLevel(level: number): BaseStats {
   return {
-    maxHp: Math.round(120 + level * 18),
-    attack: Math.round(12 + level * 3.2),
-    defense: Math.round(6 + level * 1.6),
+    maxHp: Math.round(100 + level * 12),
+    attack: Math.round(12 + level * 4),
+    defense: Math.round(6 + level * 1.2),
     speed: Math.round(10 + level * 0.6),
-    critRate: Math.min(0.45, 0.05 + level * 0.0015),
-    critDamage: Math.min(3.0, 1.5 + level * 0.004),
+    critRate: Math.min(0.45, 0.05 + level * 0.002),
+    critDamage: Math.min(3.0, 1.5 + level * 0.006),
     dodgeRate: Math.min(0.35, 0.05 + level * 0.001),
     hitRate: Math.min(0.99, 0.9 + level * 0.0006),
   };

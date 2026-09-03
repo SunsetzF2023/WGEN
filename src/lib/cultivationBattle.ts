@@ -129,7 +129,7 @@ export function simulateBattle(
     const mult = techniqueMultiplier(move);
     const isCrit = rng() < actor.stats.critRate + rarityCritBonus(def?.rarity);
     const variance = 0.92 + rng() * 0.16; // 0.92x ~ 1.08x — tighter than before so real stat gaps decide fights, not luck
-    const mitigation = 100 / (100 + target.stats.defense);
+    const mitigation = 40 / (40 + target.stats.defense);
     let raw = actor.stats.attack * mult * variance * mitigation;
     if (isCrit) raw *= actor.stats.critDamage;
     const damage = Math.max(1, Math.round(raw));

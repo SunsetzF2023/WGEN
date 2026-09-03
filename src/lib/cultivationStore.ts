@@ -183,8 +183,8 @@ export function cultivatorRealmName(c: Cultivator): string {
  *   内功 (internal power)         → max HP, defense
  *   身法 (footwork)               → speed, dodge rate, hit rate
  */
-const PASSIVE_STAT_SCALE = 0.04; // multiplicative bonus for attack/defense/maxHp/speed
-const PASSIVE_RATE_SCALE = 0.01; // additive percentage-point bonus for crit/dodge/hit rates
+const PASSIVE_STAT_SCALE = 0.12; // multiplicative bonus for attack/defense/maxHp/speed
+const PASSIVE_RATE_SCALE = 0.03; // additive percentage-point bonus for crit/dodge/hit rates
 
 interface StatBonuses {
   attackMult: number;
