@@ -501,7 +501,7 @@ export async function loadMyBattleLogs(userId: string): Promise<BattleLogRow[]> 
     .select('*')
     .or(`attacker_id.eq.${userId},defender_id.eq.${userId}`)
     .order('created_at', { ascending: false })
-    .limit(30);
+    .limit(5);
   if (error) {
     console.error('[cultivation] loadMyBattleLogs:', error);
     return [];

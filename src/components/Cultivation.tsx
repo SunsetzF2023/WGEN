@@ -592,19 +592,46 @@ export function Cultivation({ onExit, user }: CultivationProps) {
           <div className="w-full max-w-md space-y-2.5 pb-4">
             {roster.map((r) => {
               const rLevel = cultivatorLevel(r);
+              const rStats = cultivatorStats(r);
+              const rRealm = realmForLevel(rLevel).name;
               return (
-                <div key={r.ownerId} className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-slate-100">{r.name}</div>
-                    <div className="text-xs text-amber-400">{realmForLevel(rLevel).name} · Lv.{rLevel}</div>
+                <div key={r.ownerId} className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="text-sm font-medium text-slate-100">{r.name}</div>
+                      <div className="text-xs text-amber-400">{rRealm} · Lv.{rLevel}</div>
+                    </div>
+                    <button
+                      onClick={() => handleChallenge(r)}
+                      disabled={busy}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-medium transition-colors"
+                    >
+                      {busy ? '对战中…' : '发起挑战'}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleChallenge(r)}
-                    disabled={busy}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-medium transition-colors"
-                  >
-                    {busy ? '对战中…' : '发起挑战'}
-                  </button>
+                  <div className="grid grid-cols-4 gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
+                    <span>气血 <span className="text-slate-200">{rStats.maxHp}</span></span>
+                    <span>攻击 <span className="text-slate-200">{rStats.attack}</span></span>
+                    <span>防御 <span className="text-slate-200">{rStats.defense}</span></span>
+                    <span>速度 <span className="text-slate-200">{rStats.speed}</span></span>
+                    <span>暴击 <span className="text-slate-200">{(rStats.critRate * 100).toFixed(1)}%</span></span>
+                    <span>暴伤 <span className="text-slate-200">{(rStats.critDamage * 100).toFixed(0)}%</span></span>
+                    <span>闪避 <span className="text-slate-200">{(rStats.dodgeRate * 100).toFixed(1)}%</span></span>
+                    <span>命中 <span className="text-slate-200">{(rStats.hitRate * 100).toFixed(0)}%</span></span>
+                  </div>
+                  {r.equipped.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {r.equipped.map((tid) => {
+                        const t = TECHNIQUE_MAP[tid];
+                        if (!t) return null;
+                        return (
+                          <span key={tid} className={`text-[9px] px-1.5 py-0.5 rounded bg-slate-800 ${RARITY_COLOR[t.rarity]}`}>
+                            {t.name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
