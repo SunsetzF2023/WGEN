@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { signInWithGitHub } from '../lib/supabase';
-import { TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor } from '../lib/cultivationData';
+import { TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD } from '../lib/cultivationData';
 import {
   type Cultivator, type BattleLogRow,
   loadOrCreateMyCultivator, saveCultivator, loadRoster,
@@ -8,11 +8,11 @@ import {
   cultivatorStats, expProgress, learnCostFor, upgradeCostFor,
   buyTechnique, sellTechnique, refreshMarket, upgradeTechnique, toggleEquipped,
   buildingLevel, buildingUpgradeCost, upgradeBuilding, liveRatesFor,
-  challengeCultivator, loadMyBattleLogs,
+  challengeCultivator, loadMyBattleLogs, techniqueStatPreview,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
 
-type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result';
+type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex';
 
 interface CultivationProps {
   onExit: () => void;
@@ -24,6 +24,24 @@ function formatLiveGain(n: number): string {
   if (n >= 1) return n.toFixed(1);
   if (n >= 0.01) return n.toFixed(2);
   return n.toFixed(3);
+}
+
+/** Renders a technique's passive stat breakdown (and any drawback) as small pills next to its description. */
+function TechniqueStatPills({ techniqueId, level }: { techniqueId: string; level: number }) {
+  const entries = techniqueStatPreview(techniqueId, level);
+  if (entries.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-2.5">
+      {entries.map((e) => (
+        <span
+          key={e.label}
+          className={`text-[10px] px-1.5 py-0.5 rounded ${e.positive ? 'bg-emerald-900/30 text-emerald-300' : 'bg-red-900/30 text-red-300'}`}
+        >
+          {e.label} {e.value}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function CultivationHeader({ title, onBack, onExit }: { title: string; onBack?: () => void; onExit: () => void }) {
@@ -165,10 +183,13 @@ export function Cultivation({ onExit, user }: CultivationProps) {
   // ─── Actions ───
   const handleBuy = (id: string) => {
     if (!me || busy) return;
-    const next = buyTechnique(me, id);
-    if (!next) return;
+    const result = buyTechnique(me, id);
+    if (!result) return;
     setBusy(true);
-    persist(next).finally(() => setBusy(false));
+    persist(result.cultivator).finally(() => setBusy(false));
+    if (result.codexReward > 0) {
+      popFloatingText(`图鉴解锁 +${result.codexReward} 灵石`, 'text-fuchsia-300');
+    }
   };
 
   const handleRefreshMarket = () => {
@@ -370,6 +391,13 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             <span className="text-xs text-slate-400">已修 {me.techniques.length}/{MAX_OWNED_TECHNIQUES} · 已装备 {me.equipped.length}/{MAX_EQUIPPED}</span>
           </button>
           <button
+            onClick={() => setView('codex')}
+            className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center justify-between transition-colors"
+          >
+            <span>📖 功法图鉴</span>
+            <span className="text-xs text-slate-400">已收录 {me.codex.length}/{TECHNIQUES.length}</span>
+          </button>
+          <button
             onClick={() => setView('buildings')}
             className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center justify-between transition-colors"
           >
@@ -432,6 +460,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 mb-2.5">{tq.description}</p>
+                  <TechniqueStatPills techniqueId={tq.id} level={1} />
                   <button
                     onClick={() => handleBuy(tq.id)}
                     disabled={busy || owned || atCap || me.spiritStones < cost}
@@ -478,6 +507,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
                     {isEquipped && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600/30 text-emerald-300 border border-emerald-500/40">已装备</span>}
                   </div>
                   <p className="text-xs text-slate-500 mb-2.5">{tq.description}</p>
+                  <TechniqueStatPills techniqueId={tq.id} level={owned.level} />
 
                   <div className="flex gap-2">
                     {owned.level < tq.maxLevel && (
@@ -645,6 +675,63 @@ export function Cultivation({ onExit, user }: CultivationProps) {
         >
           返回主界面
         </button>
+      </div>
+    );
+  }
+
+  // ─── 功法图鉴 (Technique Codex) ───
+  if (view === 'codex') {
+    const codexSet = new Set(me.codex);
+    const totalReward = TECHNIQUES.reduce((sum, t) => sum + (codexSet.has(t.id) ? CODEX_REWARD[t.rarity] : 0), 0);
+    return (
+      <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
+        <CultivationHeader title="📖 功法图鉴" onBack={() => setView('dashboard')} onExit={onExit} />
+        <div className="w-full max-w-md mb-3 text-center">
+          <p className="text-xs text-slate-500">
+            首次习得功法可解锁图鉴并获得灵石奖励。已收录 {me.codex.length}/{TECHNIQUES.length} 部，累计获得 {totalReward} 灵石。
+          </p>
+        </div>
+        <div className="w-full max-w-md space-y-4 pb-4">
+          {RARITIES.map((rarity) => {
+            const tierTechs = TECHNIQUES.filter((t) => t.rarity === rarity);
+            if (tierTechs.length === 0) return null;
+            const unlockedCount = tierTechs.filter((t) => codexSet.has(t.id)).length;
+            return (
+              <div key={rarity}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-sm font-bold ${RARITY_COLOR[rarity]}`}>{rarity}</span>
+                  <span className="text-[10px] text-slate-500">{unlockedCount}/{tierTechs.length} · 解锁奖励 {CODEX_REWARD[rarity]} 灵石/部</span>
+                </div>
+                <div className="space-y-1.5">
+                  {tierTechs.map((t) => {
+                    const known = codexSet.has(t.id);
+                    return (
+                      <div
+                        key={t.id}
+                        className={`rounded-lg border p-2.5 ${known ? 'bg-slate-900 border-slate-700' : 'bg-slate-900/40 border-slate-800'}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-medium ${known ? 'text-slate-200' : 'text-slate-600'}`}>
+                              {known ? t.name : '？？？'}
+                            </span>
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-slate-800 text-slate-500">{t.type}</span>
+                          </div>
+                          <span className={`text-[10px] ${known ? 'text-emerald-400' : 'text-slate-600'}`}>
+                            {known ? '✓ 已收录' : '🔒 未收录'}
+                          </span>
+                        </div>
+                        {known && (
+                          <p className="text-[10px] text-slate-500 mt-1">{t.description}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }

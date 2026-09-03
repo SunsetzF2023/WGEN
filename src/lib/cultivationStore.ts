@@ -2,9 +2,10 @@ import { supabase } from './supabase';
 import {
   levelForExp, expForLevel, statsForLevel, idleRatesForLevel,
   realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES,
-  rollMarketOffers, MARKET_REFRESH_COST, sellValueFor,
+  rollMarketOffers, MARKET_REFRESH_COST, sellValueFor, CODEX_REWARD,
   type BuildingId, type BuildingLevels, DEFAULT_BUILDING_LEVELS,
   buildingCost, buildingRateMultiplier, SKY_WORKSHOP_WEIGHT_PER_LEVEL,
+  type StatKey,
 } from './cultivationData';
 import type { OwnedTechnique, BattleFighter, BattleResult } from './cultivationBattle';
 import { simulateBattle } from './cultivationBattle';
@@ -26,6 +27,8 @@ export interface Cultivator {
   equipped: string[]; // technique ids, max MAX_EQUIPPED
   market: MarketState;
   buildings: BuildingLevels;
+  /** Technique ids ever learned (persists even after selling) — drives the 功法图鉴. */
+  codex: string[];
   lastCollectedAt: string; // ISO timestamp
   updatedAt: string;
 }
@@ -47,6 +50,7 @@ function rowToCultivator(row: Record<string, unknown>): Cultivator {
     equipped: (row.equipped as string[]) || [],
     market: market && market.offers ? market : { offers: rollMarketOffers(levelForExp(exp), undefined, marketBonusFor(buildings)), refreshedAt: new Date().toISOString() },
     buildings,
+    codex: (row.codex as string[]) || [],
     lastCollectedAt: (row.last_collected_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),
   };
@@ -62,6 +66,7 @@ function cultivatorToRow(c: Cultivator): Record<string, unknown> {
     equipped: c.equipped,
     market: c.market,
     buildings: c.buildings,
+    codex: c.codex,
     last_collected_at: c.lastCollectedAt,
     updated_at: new Date().toISOString(),
   };
@@ -78,6 +83,7 @@ function freshCultivator(ownerId: string, name: string): Cultivator {
     equipped: ['basic-strike'],
     market: { offers: rollMarketOffers(1), refreshedAt: now },
     buildings: { ...DEFAULT_BUILDING_LEVELS },
+    codex: ['basic-strike'],
     lastCollectedAt: now,
     updatedAt: now,
   };
@@ -191,6 +197,22 @@ interface StatBonuses {
   hitRateAdd: number;
 }
 
+/** Applies a signed delta to whichever stat bucket `stat` refers to (percentage-point add for rate stats, multiplier delta for the rest). */
+function applyStatDelta(bonus: StatBonuses, stat: StatKey, amount: number): void {
+  switch (stat) {
+    case 'attack': bonus.attackMult += amount; break;
+    case 'defense': bonus.defenseMult += amount; break;
+    case 'maxHp': bonus.maxHpMult += amount; break;
+    case 'speed': bonus.speedMult += amount; break;
+    case 'critRate': bonus.critRateAdd += amount; break;
+    case 'critDamage': bonus.critDamageAdd += amount; break;
+    case 'dodgeRate': bonus.dodgeRateAdd += amount; break;
+    case 'hitRate': bonus.hitRateAdd += amount; break;
+  }
+}
+
+const RATE_STATS: ReadonlySet<StatKey> = new Set(['critRate', 'critDamage', 'dodgeRate', 'hitRate']);
+
 export function equippedStatBonuses(c: Cultivator): StatBonuses {
   const bonus: StatBonuses = {
     attackMult: 1, defenseMult: 1, maxHpMult: 1, speedMult: 1,
@@ -222,8 +244,70 @@ export function equippedStatBonuses(c: Cultivator): StatBonuses {
         bonus.attackMult += statPower;
         bonus.critDamageAdd += ratePower * 1.5;
     }
+    if (tqDef.drawback) {
+      const magnitude = (RATE_STATS.has(tqDef.drawback.stat) ? ratePower : statPower) * tqDef.drawback.strength;
+      applyStatDelta(bonus, tqDef.drawback.stat, -magnitude);
+    }
   }
   return bonus;
+}
+
+export interface TechniqueStatEntry {
+  label: string;
+  value: string;
+  positive: boolean;
+}
+
+const STAT_LABELS: Record<StatKey, string> = {
+  attack: '攻击', defense: '防御', maxHp: '气血', speed: '速度',
+  critRate: '暴击率', critDamage: '暴击伤害', dodgeRate: '闪避率', hitRate: '命中率',
+};
+
+/**
+ * Human-readable breakdown of the passive stat swing a technique grants (and any drawback it
+ * carries) while equipped at the given level — used to show "究竟提升了什么数值" in the UI,
+ * independent of whether it's actually equipped or even learned yet.
+ */
+export function techniqueStatPreview(techniqueId: string, level: number): TechniqueStatEntry[] {
+  const tqDef = TECHNIQUE_MAP[techniqueId];
+  if (!tqDef) return [];
+  const power = tqDef.baseMultiplier + tqDef.multiplierPerLevel * (level - 1);
+  const statPower = power * PASSIVE_STAT_SCALE;
+  const ratePower = power * PASSIVE_RATE_SCALE;
+  const bonus: Partial<Record<StatKey, number>> = {};
+  const add = (stat: StatKey, amount: number) => { bonus[stat] = (bonus[stat] ?? 0) + amount; };
+
+  switch (tqDef.type) {
+    case '内功':
+      add('maxHp', statPower);
+      add('defense', statPower);
+      break;
+    case '身法':
+      add('speed', statPower);
+      add('dodgeRate', ratePower);
+      add('hitRate', ratePower * 0.5);
+      break;
+    case '指法':
+    case '剑法':
+      add('attack', statPower);
+      add('critRate', ratePower);
+      break;
+    default:
+      add('attack', statPower);
+      add('critDamage', ratePower * 1.5);
+  }
+  if (tqDef.drawback) {
+    const magnitude = (RATE_STATS.has(tqDef.drawback.stat) ? ratePower : statPower) * tqDef.drawback.strength;
+    add(tqDef.drawback.stat, -magnitude);
+  }
+
+  return (Object.entries(bonus) as [StatKey, number][])
+    .filter(([, amount]) => Math.abs(amount) > 1e-9)
+    .map(([stat, amount]) => ({
+      label: STAT_LABELS[stat],
+      value: `${amount > 0 ? '+' : ''}${(amount * 100).toFixed(1)}%`,
+      positive: amount > 0,
+    }));
 }
 
 export function cultivatorStats(c: Cultivator) {
@@ -277,20 +361,27 @@ export function upgradeCostFor(techniqueId: string, currentLevel: number): numbe
   return def.upgradeCost * currentLevel;
 }
 
-/** Buy (learn) a technique that is currently listed in the cultivator's 坊市 offers. */
-export function buyTechnique(c: Cultivator, techniqueId: string): Cultivator | null {
+/** Buy (learn) a technique that is currently listed in the cultivator's 坊市 offers.
+ *  First-time learning of a technique also grants a one-time 图鉴解锁 spirit stone reward. */
+export function buyTechnique(c: Cultivator, techniqueId: string): { cultivator: Cultivator; codexReward: number } | null {
   const def = TECHNIQUE_MAP[techniqueId];
   if (!def) return null;
   if (!c.market.offers.includes(techniqueId)) return null;
   if (c.techniques.some((t) => t.id === techniqueId)) return null;
-  if (c.techniques.length >= MAX_OWNED_TECHNIQUES) return null; // 已满，需先卖出一门
+  if (c.techniques.length >= MAX_OWNED_TECHNIQUES) return null;
   const cost = learnCostFor(techniqueId);
   if (c.spiritStones < cost) return null;
+  const alreadyInCodex = c.codex.includes(techniqueId);
+  const codexReward = alreadyInCodex ? 0 : CODEX_REWARD[def.rarity];
   return {
-    ...c,
-    spiritStones: c.spiritStones - cost,
-    techniques: [...c.techniques, { id: techniqueId, level: 1 }],
-    market: { ...c.market, offers: c.market.offers.filter((id) => id !== techniqueId) },
+    cultivator: {
+      ...c,
+      spiritStones: c.spiritStones - cost + codexReward,
+      techniques: [...c.techniques, { id: techniqueId, level: 1 }],
+      codex: alreadyInCodex ? c.codex : [...c.codex, techniqueId],
+      market: { ...c.market, offers: c.market.offers.filter((id) => id !== techniqueId) },
+    },
+    codexReward,
   };
 }
 

@@ -29,6 +29,8 @@ export const RARITY_WEIGHT: Record<Rarity, number> = {
   仙阶: 0.5,
 };
 
+export type StatKey = 'attack' | 'defense' | 'maxHp' | 'speed' | 'critRate' | 'critDamage' | 'dodgeRate' | 'hitRate';
+
 export interface Technique {
   id: string;
   name: string;
@@ -44,12 +46,18 @@ export interface Technique {
   /** Spirit stones required to upgrade from level N to N+1 = upgradeCost * N */
   upgradeCost: number;
   maxLevel: number;
+  /**
+   * Some aggressive/risky techniques trade part of their power away from a second stat
+   * while equipped — e.g. an all-out offense style that leaves your guard open. `strength`
+   * is relative to the technique's own passive bonus scale (1.0 = as strong as the gain).
+   */
+  drawback?: { stat: StatKey; strength: number };
 }
 
 const RAW_TECHNIQUES: Technique[] = [
   // ─── 黄阶：坊市常见货色，人人可学 ───
   {
-    id: 'basic-strike', name: '黑虎拳', type: '拳法', rarity: '黄阶',
+    id: 'basic-strike', name: '黑虎掏心拳', type: '拳法', rarity: '黄阶',
     description: '坊市地摊货，胜在朴实无华，出手迅捷。',
     baseMultiplier: 1.0, multiplierPerLevel: 0.06, learnCost: 0, upgradeCost: 15, maxLevel: 10,
   },
@@ -59,18 +67,18 @@ const RAW_TECHNIQUES: Technique[] = [
     baseMultiplier: 0.9, multiplierPerLevel: 0.06, learnCost: 20, upgradeCost: 15, maxLevel: 10,
   },
   {
-    id: 'gale-leg', name: '烈风腿', type: '腿法', rarity: '黄阶',
+    id: 'gale-leg', name: '烈风扫叶腿', type: '腿法', rarity: '黄阶',
     description: '腿法凌厉，招式简单却很实用。',
     baseMultiplier: 1.05, multiplierPerLevel: 0.07, learnCost: 30, upgradeCost: 18, maxLevel: 10,
   },
   // ─── 人阶：武者境以上开始能压得住场子 ───
   {
-    id: 'poxue-spear', name: '破军枪法', type: '枪法', rarity: '人阶',
+    id: 'poxue-spear', name: '破军七杀枪', type: '枪法', rarity: '人阶',
     description: '军中流传的枪法，一往无前，攻势凌厉。',
     baseMultiplier: 1.3, multiplierPerLevel: 0.10, learnCost: 90, upgradeCost: 35, maxLevel: 10,
   },
   {
-    id: 'shadowless-step', name: '无影步', type: '身法', rarity: '人阶',
+    id: 'shadowless-step', name: '无影迷踪步', type: '身法', rarity: '人阶',
     description: '身法诡异难测，出手前先隐没身形。',
     baseMultiplier: 1.15, multiplierPerLevel: 0.09, learnCost: 110, upgradeCost: 40, maxLevel: 10,
   },
@@ -82,8 +90,9 @@ const RAW_TECHNIQUES: Technique[] = [
   // ─── 地阶：武师、大武师才压得住 ───
   {
     id: 'nine-yin-claw', name: '九阴白骨爪', type: '指法', rarity: '地阶',
-    description: '阴狠毒辣的指法，一旦得手伤势极难恢复。',
+    description: '阴狠毒辣的指法，一旦得手伤势极难恢复，然专攻不守，防御略有下降。',
     baseMultiplier: 1.55, multiplierPerLevel: 0.13, learnCost: 260, upgradeCost: 80, maxLevel: 10,
+    drawback: { stat: 'defense', strength: 0.6 },
   },
   {
     id: 'thousand-hammer-palm', name: '千锤百炼掌', type: '掌法', rarity: '地阶',
@@ -91,13 +100,13 @@ const RAW_TECHNIQUES: Technique[] = [
     baseMultiplier: 1.5, multiplierPerLevel: 0.12, learnCost: 240, upgradeCost: 75, maxLevel: 10,
   },
   {
-    id: 'flowing-cloud-sword', name: '流云剑诀', type: '剑法', rarity: '地阶',
+    id: 'flowing-cloud-sword', name: '流云无痕剑诀', type: '剑法', rarity: '地阶',
     description: '剑意如行云流水，连绵不绝。',
     baseMultiplier: 1.6, multiplierPerLevel: 0.13, learnCost: 280, upgradeCost: 85, maxLevel: 10,
   },
   // ─── 天阶：武宗、大武宗方能驾驭 ───
   {
-    id: 'thunder-emperor-fist', name: '雷帝真拳', type: '拳法', rarity: '天阶',
+    id: 'thunder-emperor-fist', name: '九霄雷帝真拳', type: '拳法', rarity: '天阶',
     description: '拳意与天雷共鸣，出拳伴随滚滚雷鸣。',
     baseMultiplier: 1.9, multiplierPerLevel: 0.16, learnCost: 620, upgradeCost: 180, maxLevel: 10,
   },
@@ -113,12 +122,13 @@ const RAW_TECHNIQUES: Technique[] = [
   },
   // ─── 帝阶：唯有武王及以上、且需晋入武帝才会现于坊市 ───
   {
-    id: 'sovereign-annihilation-fist', name: '帝灭拳', type: '拳法', rarity: '帝阶',
-    description: '一拳出，天地失色，唯武帝方可窥其全貌。',
+    id: 'sovereign-annihilation-fist', name: '大帝灭世拳', type: '拳法', rarity: '帝阶',
+    description: '一拳出，天地失色，唯武帝方可窥其全貌，然全力一击后门户大开，防御大幅下降。',
     baseMultiplier: 2.5, multiplierPerLevel: 0.22, learnCost: 1600, upgradeCost: 420, maxLevel: 10,
+    drawback: { stat: 'defense', strength: 0.8 },
   },
   {
-    id: 'imperial-sun-scripture', name: '帝日经', type: '内功', rarity: '帝阶',
+    id: 'imperial-sun-scripture', name: '帝曜太阳真经', type: '内功', rarity: '帝阶',
     description: '炼体成日，气血如朝阳生生不息。',
     baseMultiplier: 2.3, multiplierPerLevel: 0.20, learnCost: 1500, upgradeCost: 400, maxLevel: 10,
   },
@@ -130,48 +140,50 @@ const RAW_TECHNIQUES: Technique[] = [
   // ─── 神阶：武尊往上才配得上的威能 ───
   {
     id: 'god-slaying-spear', name: '弑神枪', type: '枪法', rarity: '神阶',
-    description: '相传曾有武神折戟于此枪之下。',
+    description: '相传曾有武神折戟于此枪之下，然出枪讲究孤注一掷，身形因此滞涩，速度下降。',
     baseMultiplier: 3.2, multiplierPerLevel: 0.28, learnCost: 3800, upgradeCost: 900, maxLevel: 10,
+    drawback: { stat: 'speed', strength: 0.7 },
   },
   {
     id: 'divine-devour-palm', name: '吞神噬魂掌', type: '掌法', rarity: '神阶',
-    description: '掌心吞吐神念，被拍中者魂魄俱伤。',
+    description: '掌心吞吐神念，被拍中者魂魄俱伤，然逆运神念亦反噬己身气血。',
     baseMultiplier: 3.0, multiplierPerLevel: 0.26, learnCost: 3500, upgradeCost: 850, maxLevel: 10,
+    drawback: { stat: 'maxHp', strength: 0.5 },
   },
   // ─── 仙阶：坊市传说，武皇亦难求 ───
   {
-    id: 'immortal-ascension-scripture', name: '仙飞升诀', type: '内功', rarity: '仙阶',
+    id: 'immortal-ascension-scripture', name: '太清飞升仙诀', type: '内功', rarity: '仙阶',
     description: '习之若成，隐有飞升霞光自体表溢出。',
     baseMultiplier: 3.8, multiplierPerLevel: 0.34, learnCost: 8000, upgradeCost: 1800, maxLevel: 10,
   },
   {
-    id: 'immortal-severing-sword', name: '斩仙剑诀', type: '剑法', rarity: '仙阶',
+    id: 'immortal-severing-sword', name: '太虚斩仙剑诀', type: '剑法', rarity: '仙阶',
     description: '剑指九天，仙神亦不可挡其锋芒。',
     baseMultiplier: 4.0, multiplierPerLevel: 0.36, learnCost: 8500, upgradeCost: 1900, maxLevel: 10,
   },
   // ─── 补充：坊市里更常见的"凑数"功法，威力平平，多半是留着卖钱的 ───
   {
-    id: 'sparrow-kick', name: '麻雀连环腿', type: '腿法', rarity: '黄阶',
+    id: 'sparrow-kick', name: '燕雀还巢腿', type: '腿法', rarity: '黄阶',
     description: '坊市摊位随手能买到，聊胜于无。',
     baseMultiplier: 0.85, multiplierPerLevel: 0.05, learnCost: 10, upgradeCost: 12, maxLevel: 10,
   },
   {
-    id: 'stone-skin', name: '顽石功', type: '内功', rarity: '黄阶',
+    id: 'stone-skin', name: '顽石淬体功', type: '内功', rarity: '黄阶',
     description: '练之全身如顽石，就是没什么灵性。',
     baseMultiplier: 0.8, multiplierPerLevel: 0.05, learnCost: 15, upgradeCost: 12, maxLevel: 10,
   },
   {
-    id: 'copper-fist', name: '铜锤拳', type: '拳法', rarity: '黄阶',
+    id: 'copper-fist', name: '铜锤开山拳', type: '拳法', rarity: '黄阶',
     description: '坊市滞销款，威力平平但便宜量大。',
     baseMultiplier: 0.95, multiplierPerLevel: 0.06, learnCost: 5, upgradeCost: 12, maxLevel: 10,
   },
   {
-    id: 'twin-blade-style', name: '双刃迎风式', type: '剑法', rarity: '人阶',
+    id: 'twin-blade-style', name: '迎风斩月剑', type: '剑法', rarity: '人阶',
     description: '略有章法的剑招，勉强算是登堂入室。',
     baseMultiplier: 1.1, multiplierPerLevel: 0.08, learnCost: 70, upgradeCost: 32, maxLevel: 10,
   },
   {
-    id: 'iron-sand-palm', name: '铁沙掌', type: '掌法', rarity: '人阶',
+    id: 'iron-sand-palm', name: '铁砂掌', type: '掌法', rarity: '人阶',
     description: '练家子常备功法，物美价廉。',
     baseMultiplier: 1.2, multiplierPerLevel: 0.09, learnCost: 85, upgradeCost: 34, maxLevel: 10,
   },
@@ -181,17 +193,18 @@ const RAW_TECHNIQUES: Technique[] = [
     baseMultiplier: 1.1, multiplierPerLevel: 0.08, learnCost: 95, upgradeCost: 36, maxLevel: 10,
   },
   {
-    id: 'black-tortoise-guard', name: '玄龟护体功', type: '内功', rarity: '地阶',
+    id: 'black-tortoise-guard', name: '玄龟镇海功', type: '内功', rarity: '地阶',
     description: '以守代攻，寻常武师近身不得。',
     baseMultiplier: 1.4, multiplierPerLevel: 0.11, learnCost: 220, upgradeCost: 70, maxLevel: 10,
   },
   {
-    id: 'crimson-blade-slash', name: '赤血斩', type: '剑法', rarity: '地阶',
-    description: '一斩带三分血气，看着就凶。',
+    id: 'crimson-blade-slash', name: '赤血饮魂斩', type: '剑法', rarity: '地阶',
+    description: '一斩带三分血气，看着就凶，以血养剑，气血因此略有损耗。',
     baseMultiplier: 1.55, multiplierPerLevel: 0.12, learnCost: 250, upgradeCost: 78, maxLevel: 10,
+    drawback: { stat: 'maxHp', strength: 0.4 },
   },
   {
-    id: 'void-piercing-finger', name: '破空指', type: '指法', rarity: '天阶',
+    id: 'void-piercing-finger', name: '破空碎虚指', type: '指法', rarity: '天阶',
     description: '指劲可破空鸣响，宗师之姿初现。',
     baseMultiplier: 1.85, multiplierPerLevel: 0.15, learnCost: 640, upgradeCost: 185, maxLevel: 10,
   },
@@ -212,6 +225,17 @@ export const TECHNIQUES: Technique[] = RAW_TECHNIQUES.map((t) => ({
 export const TECHNIQUE_MAP: Record<string, Technique> = Object.fromEntries(
   TECHNIQUES.map((t) => [t.id, t])
 );
+
+/** One-time spirit stone reward granted the first time a technique of each rarity is learned (图鉴解锁奖励). */
+export const CODEX_REWARD: Record<Rarity, number> = {
+  黄阶: 20,
+  人阶: 80,
+  地阶: 200,
+  天阶: 500,
+  帝阶: 1200,
+  神阶: 3000,
+  仙阶: 8000,
+};
 
 export const MAX_EQUIPPED = 3;
 /** Max techniques a cultivator can hold at once; extras must be sold for spirit stones first. */
@@ -329,10 +353,9 @@ const EXP_TIER_STEP = 0.25;
 /** Total lifetime exp required to reach a given level (level 1 = 0 exp). */
 export function expForLevel(level: number): number {
   if (level <= 1) return 0;
-  // Base scaled 8x alongside idleRatesForLevel's 8x income boost, so the actual
-  // time-to-level-up pace is unchanged — only the raw numbers ticking by (bar totals,
-  // "+N exp" popups) read much bigger and more satisfying.
-  const base = 800 * Math.pow(level - 1, 1.5);
+  // Base scaled to match the boosted idle rates so time-to-level pace is preserved;
+  // the raw numbers (bar totals, "+N exp" popups) read much bigger and more satisfying.
+  const base = 12000 * Math.pow(level - 1, 1.5);
   const tierMultiplier = 1 + EXP_TIER_STEP * realmTierIndex(level);
   return Math.floor(base * tierMultiplier);
 }
@@ -340,7 +363,7 @@ export function expForLevel(level: number): number {
 /** Derive current level from total accumulated exp. */
 export function levelForExp(exp: number): number {
   if (exp <= 0) return 1;
-  let level = Math.max(1, Math.floor(1 + Math.pow(exp / 800, 2 / 3)));
+  let level = Math.max(1, Math.floor(1 + Math.pow(exp / 12000, 2 / 3)));
   while (expForLevel(level + 1) <= exp) level++;
   while (level > 1 && expForLevel(level) > exp) level--;
   return level;
@@ -383,8 +406,8 @@ const IDLE_TIER_STEP = 0.35;
 export function idleRatesForLevel(level: number): { expPerHour: number; stonesPerHour: number } {
   const tierBoost = 1 + IDLE_TIER_STEP * realmTierIndex(level);
   return {
-    expPerHour: Math.round((480 + level * 110) * tierBoost),
-    stonesPerHour: Math.round((240 + level * 55) * tierBoost),
+    expPerHour: Math.round((7200 + level * 1800) * tierBoost),
+    stonesPerHour: Math.round((5400 + level * 1200) * tierBoost),
   };
 }
 
