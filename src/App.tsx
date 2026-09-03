@@ -8,6 +8,7 @@ import { Sidebar } from './components/Sidebar';
 import { Sudoku } from './components/Sudoku';
 import { Gomoku } from './components/Gomoku';
 import { FlightChess } from './components/FlightChess';
+import { Cultivation } from './components/Cultivation';
 import { supabase, signInWithGitHub, signOut } from './lib/supabase';
 import {
   loadLocalEntities, saveLocalEntities, loadCloudEntities, saveCloudEntity, deleteCloudEntity, deleteCloudEntitiesByProject,
@@ -609,6 +610,8 @@ export default function App() {
           <Gomoku onExit={() => setGameView(null)} />
         ) : gameView === 'flightchess' ? (
           <FlightChess onExit={() => setGameView(null)} />
+        ) : gameView === 'cultivation' ? (
+          <Cultivation onExit={() => setGameView(null)} user={user} />
         ) : dataLoading ? (
           <div className="w-full h-full flex items-center justify-center text-slate-400">
             <div className="flex items-center gap-2">
