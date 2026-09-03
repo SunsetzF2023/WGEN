@@ -2,7 +2,7 @@
 // Events involve NPCs (with flavorful names) and sometimes real players.
 // Generated client-side on each page load from the last-collected timestamp.
 
-export type EventType = 'duel' | 'ambush' | 'treasure' | 'encounter' | 'rivalry';
+export type EventType = 'duel' | 'ambush' | 'treasure' | 'encounter' | 'rivalry' | 'broadcast';
 
 /** Concrete effect applied to a player involved in an event. */
 export interface EventEffect {
@@ -300,6 +300,7 @@ export const EVENT_TYPE_LABEL: Record<EventType, string> = {
   treasure: '💎 寻宝',
   encounter: '🌟 奇遇',
   rivalry: '😤 恩怨',
+  broadcast: '📢 天下播报',
 };
 
 export const EVENT_TYPE_COLOR: Record<EventType, string> = {
@@ -308,4 +309,17 @@ export const EVENT_TYPE_COLOR: Record<EventType, string> = {
   treasure: 'text-amber-400',
   encounter: 'text-sky-400',
   rivalry: 'text-orange-400',
+  broadcast: 'text-yellow-300',
 };
+
+/** Create a broadcast event for a player's realm breakthrough. */
+export function createBreakthroughBroadcast(playerName: string, realmName: string): JianghuEvent {
+  return {
+    id: `${Date.now()}-bc-${Math.random().toString(36).slice(2, 8)}`,
+    type: 'broadcast',
+    text: `🎊 恭喜 ${playerName} 突破至 ${realmName} 境界！江湖震动，四方侧目。`,
+    participants: [playerName],
+    createdAt: new Date().toISOString(),
+    effects: [],
+  };
+}

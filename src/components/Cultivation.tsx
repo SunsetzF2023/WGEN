@@ -13,7 +13,7 @@ import {
   placeAuctionBid, type BreakthroughChallenge,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
-import { generateEvents, collectPlayerEffects, EVENT_TYPE_LABEL, EVENT_TYPE_COLOR, type JianghuEvent } from '../lib/jianghuEvents';
+import { generateEvents, collectPlayerEffects, createBreakthroughBroadcast, EVENT_TYPE_LABEL, EVENT_TYPE_COLOR, type JianghuEvent } from '../lib/jianghuEvents';
 
 type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex' | 'jianghu' | 'breakthrough-result';
 
@@ -69,6 +69,8 @@ export function Cultivation({ onExit, user }: CultivationProps) {
   const [busy, setBusy] = useState(false);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [jianghuEvents, setJianghuEvents] = useState<JianghuEvent[]>([]);
+  const [unreadJianghu, setUnreadJianghu] = useState(0);
+  const playerNamesRef = useRef<string[]>([]);
   const [breakthroughResult, setBreakthroughResult] = useState<{ challenge: BreakthroughChallenge; npcBidName: string | null } | null>(null);
   const [popups, setPopups] = useState<{ id: number; text: string; color: string }[]>([]);
   const [liveOffset, setLiveOffset] = useState({ exp: 0, stones: 0 });
@@ -98,6 +100,30 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       if (cancelled) return;
       setMe(updated);
       if (gains.exp > 0 || gains.spiritStones > 0) setIdleBanner(gains);
+      // Load player names and generate initial jianghu events
+      const others = await loadRoster(user.id);
+      const names = [user.name, ...others.map((co) => co.name)];
+      playerNamesRef.current = names;
+      const initial = generateEvents(8, names);
+      setJianghuEvents(initial);
+      // Apply effects from initial batch
+      const myEffects = collectPlayerEffects(initial, user.name);
+      if (myEffects.length > 0) {
+        const totalExp = myEffects.reduce((s, e) => s + e.expDelta, 0);
+        const totalStones = myEffects.reduce((s, e) => s + e.spiritStonesDelta, 0);
+        if (totalExp !== 0 || totalStones !== 0) {
+          const next: Cultivator = {
+            ...updated,
+            exp: Math.max(0, updated.exp + totalExp),
+            spiritStones: Math.max(0, updated.spiritStones + totalStones),
+          };
+          setMe(next);
+          await saveCultivator(next);
+        }
+      }
+      // Count unread player-related events
+      const unread = initial.filter((ev) => ev.effects.some((e) => e.playerName === user.name)).length;
+      setUnreadJianghu(unread);
       setView('dashboard');
     })();
     return () => { cancelled = true; };
@@ -128,25 +154,47 @@ export function Cultivation({ onExit, user }: CultivationProps) {
   }, []);
 
   const refreshJianghu = useCallback(async () => {
-    if (!user || !me) return;
+    if (!user) return;
     const others = await loadRoster(user.id);
-    const playerNames = [user.name, ...others.map((c) => c.name)];
-    const events = generateEvents(15, playerNames);
-    setJianghuEvents(events);
-    const myEffects = collectPlayerEffects(events, user.name);
-    if (myEffects.length > 0) {
-      const totalExp = myEffects.reduce((s, e) => s + e.expDelta, 0);
-      const totalStones = myEffects.reduce((s, e) => s + e.spiritStonesDelta, 0);
-      if (totalExp !== 0 || totalStones !== 0) {
-        const next: Cultivator = {
-          ...me,
-          exp: Math.max(0, me.exp + totalExp),
-          spiritStones: Math.max(0, me.spiritStones + totalStones),
-        };
-        await persist(next);
+    playerNamesRef.current = [user.name, ...others.map((c) => c.name)];
+  }, [user]);
+
+  // ─── Background jianghu event generation: 1-2 events every 45 seconds ───
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(async () => {
+      const names = playerNamesRef.current;
+      if (names.length === 0) return;
+      const count = Math.random() < 0.3 ? 2 : 1;
+      const newEvents = generateEvents(count, names);
+      setJianghuEvents((prev) => {
+        const combined = [...newEvents, ...prev];
+        return combined.slice(0, 50); // cap at 50 events
+      });
+      // Apply effects to current player
+      const base = meRef.current;
+      if (base) {
+        const myEffects = collectPlayerEffects(newEvents, user.name);
+        if (myEffects.length > 0) {
+          const totalExp = myEffects.reduce((s, e) => s + e.expDelta, 0);
+          const totalStones = myEffects.reduce((s, e) => s + e.spiritStonesDelta, 0);
+          if (totalExp !== 0 || totalStones !== 0) {
+            const next: Cultivator = {
+              ...base,
+              exp: Math.max(0, base.exp + totalExp),
+              spiritStones: Math.max(0, base.spiritStones + totalStones),
+            };
+            dirtyRef.current = true;
+            setMe(next);
+          }
+          // Increment unread count for player-related events
+          setUnreadJianghu((prev) => prev + myEffects.length);
+        }
       }
-    }
-  }, [user, me, persist]);
+    }, 45000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => { meRef.current = me; }, [me]);
 
@@ -263,6 +311,10 @@ export function Cultivation({ onExit, user }: CultivationProps) {
     if (challenge.success) {
       const next = applyBreakthroughSuccess(me, challenge);
       persist(next).finally(() => setBusy(false));
+      // Broadcast breakthrough to jianghu
+      const realmName = realmForLevel(challenge.guardianLevel).name;
+      const broadcast = createBreakthroughBroadcast(user?.name ?? '无名武者', realmName);
+      setJianghuEvents((prev) => [broadcast, ...prev].slice(0, 50));
     } else {
       const next = applyBreakthroughFailure(me);
       persist(next).finally(() => setBusy(false));
@@ -492,11 +544,16 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             <span className="text-xs text-slate-400">历史记录</span>
           </button>
           <button
-            onClick={() => { setView('jianghu'); refreshJianghu(); }}
-            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium flex items-center justify-between transition-colors"
+            onClick={() => { setView('jianghu'); setUnreadJianghu(0); refreshJianghu(); }}
+            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium flex items-center justify-between transition-colors relative"
           >
             <span>📰 江湖名录</span>
             <span className="text-xs text-indigo-100">江湖风云</span>
+            {unreadJianghu > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadJianghu > 99 ? '99+' : unreadJianghu}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -926,7 +983,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
         <CultivationHeader title="📰 江湖名录" onBack={() => setView('dashboard')} onExit={onExit} />
         <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
-          江湖风云变幻，恩怨情仇不断。你和朋友的名字也可能出现在其中。每次进入江湖名录，新的江湖消息自动生成。
+          江湖风云变幻，恩怨情仇不断。事件持续滚动生成，涉及你的事件会自动结算修为/灵石。突破境界也会在此播报。
         </p>
         <div className="w-full max-w-md space-y-2 pb-4">
           {jianghuEvents.length === 0 ? (
