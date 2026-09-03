@@ -5,7 +5,7 @@ import {
   rollMarketOffers, MARKET_REFRESH_COST, CODEX_REWARD, sellValueFor,
   type BuildingId, type BuildingLevels, DEFAULT_BUILDING_LEVELS,
   buildingCost, buildingRateMultiplier, SKY_WORKSHOP_WEIGHT_PER_LEVEL,
-  type StatKey, RARITIES,
+  type StatKey,
 } from './cultivationData';
 import type { OwnedTechnique, BattleFighter, BattleResult } from './cultivationBattle';
 import { simulateBattle } from './cultivationBattle';
@@ -217,18 +217,7 @@ export function equippedStatBonuses(c: Cultivator): StatBonuses {
     attackMult: 1, defenseMult: 1, maxHpMult: 1, speedMult: 1,
     critRateAdd: 0, critDamageAdd: 0, dodgeRateAdd: 0, hitRateAdd: 0,
   };
-  // For each technique type, find the highest-rarity owned technique.
-  const bestPerType = new Map<string, { owned: OwnedTechnique; rarityIdx: number }>();
   for (const owned of c.techniques) {
-    const def = TECHNIQUE_MAP[owned.id];
-    if (!def) continue;
-    const rarityIdx = RARITIES.indexOf(def.rarity);
-    const existing = bestPerType.get(def.type);
-    if (!existing || rarityIdx > existing.rarityIdx) {
-      bestPerType.set(def.type, { owned, rarityIdx });
-    }
-  }
-  for (const { owned } of bestPerType.values()) {
     const tqDef = TECHNIQUE_MAP[owned.id];
     if (!tqDef) continue;
     const power = tqDef.baseMultiplier + tqDef.multiplierPerLevel * (owned.level - 1);

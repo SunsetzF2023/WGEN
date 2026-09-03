@@ -483,7 +483,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
         <CultivationHeader title="📜 已修功法" onBack={() => setView('dashboard')} onExit={onExit} />
         <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
-          所有已修功法均提供被动属性加成（同类型只取最高品阶生效）。装备 {MAX_EQUIPPED} 门用于对战，帝阶以上功法附带特殊战斗效果（连击/复活/替死）。
+          所有已修功法均提供被动属性加成（直接叠加，学得越多越强）。装备 {MAX_EQUIPPED} 门用于对战，帝阶以上功法附带特殊战斗效果（连击/复活/替死）。
         </p>
         {me.techniques.length === 0 ? (
           <p className="text-sm text-slate-500 mt-8">尚未修习任何功法，去坊市看看吧。</p>
