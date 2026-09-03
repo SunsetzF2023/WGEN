@@ -11,8 +11,9 @@ import {
   challengeCultivator, loadMyBattleLogs, techniqueStatPreview,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
+import { generateEvents, EVENT_TYPE_LABEL, EVENT_TYPE_COLOR, type JianghuEvent } from '../lib/jianghuEvents';
 
-type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex';
+type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex' | 'jianghu';
 
 interface CultivationProps {
   onExit: () => void;
@@ -65,6 +66,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
   const [activeBattle, setActiveBattle] = useState<{ log: LogEntry[]; winnerId: string; winnerName: string; attackerName: string; defenderName: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [jianghuEvents, setJianghuEvents] = useState<JianghuEvent[]>([]);
   const [popups, setPopups] = useState<{ id: number; text: string; color: string }[]>([]);
   const [liveOffset, setLiveOffset] = useState({ exp: 0, stones: 0 });
   const dirtyRef = useRef(false);
@@ -110,6 +112,14 @@ export function Cultivation({ onExit, user }: CultivationProps) {
     if (!user) return;
     const logs = await loadMyBattleLogs(user.id);
     setHistory(logs);
+  }, [user]);
+
+  const refreshJianghu = useCallback(async () => {
+    if (!user) return;
+    const others = await loadRoster(user.id);
+    const playerNames = [user.name, ...others.map((c) => c.name)];
+    const events = generateEvents(15, playerNames);
+    setJianghuEvents(events);
   }, [user]);
 
   const persist = useCallback(async (next: Cultivator) => {
@@ -417,6 +427,13 @@ export function Cultivation({ onExit, user }: CultivationProps) {
           >
             <span>📖 对战日志</span>
             <span className="text-xs text-slate-400">历史记录</span>
+          </button>
+          <button
+            onClick={() => { setView('jianghu'); refreshJianghu(); }}
+            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium flex items-center justify-between transition-colors"
+          >
+            <span>📰 江湖名录</span>
+            <span className="text-xs text-indigo-100">江湖风云</span>
           </button>
         </div>
       </div>
@@ -758,6 +775,42 @@ export function Cultivation({ onExit, user }: CultivationProps) {
               </div>
             );
           })}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── 江湖名录 (Jianghu Chronicle) ───
+  if (view === 'jianghu') {
+    return (
+      <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
+        <CultivationHeader title="📰 江湖名录" onBack={() => setView('dashboard')} onExit={onExit} />
+        <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
+          江湖风云变幻，恩怨情仇不断。你和朋友的名字也可能出现在其中。
+        </p>
+        <button
+          onClick={() => refreshJianghu()}
+          disabled={busy}
+          className="mb-3 text-xs px-4 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-30 text-white font-medium transition-colors"
+        >
+          🔄 刷新江湖消息
+        </button>
+        <div className="w-full max-w-md space-y-2 pb-4">
+          {jianghuEvents.length === 0 ? (
+            <p className="text-sm text-slate-500 mt-8 text-center">暂无江湖消息，刷新看看。</p>
+          ) : jianghuEvents.map((ev) => (
+            <div key={ev.id} className="rounded-xl border bg-slate-900 border-slate-700 p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] font-medium ${EVENT_TYPE_COLOR[ev.type]}`}>
+                  {EVENT_TYPE_LABEL[ev.type]}
+                </span>
+                <span className="text-[10px] text-slate-600">
+                  {new Date(ev.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <p className="text-sm text-slate-300 leading-relaxed">{ev.text}</p>
+            </div>
+          ))}
         </div>
       </div>
     );
