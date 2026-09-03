@@ -268,20 +268,20 @@ function buildRealms(): Realm[] {
   level += 1;
   for (const star of STAR_NAMES) {
     realms.push({ name: `武者${star}星`, minLevel: level });
-    level += 2;
+    level += 1;
   }
   realms.push({ name: '武师', minLevel: level });
-  level += 4;
+  level += 3;
   realms.push({ name: '大武师', minLevel: level });
-  level += 5;
+  level += 3;
   realms.push({ name: '武宗', minLevel: level });
-  level += 6;
+  level += 4;
   realms.push({ name: '大武宗', minLevel: level });
-  level += 7;
+  level += 4;
   for (const grand of GRAND_REALMS) {
     for (const pin of PIN_NAMES) {
       realms.push({ name: `${grand}${pin}`, minLevel: level });
-      level += 5;
+      level += 4;
     }
   }
   realms.push({ name: '武神', minLevel: level });
@@ -322,10 +322,16 @@ export function isRarityUnlocked(rarity: Rarity, level: number): boolean {
   return level >= rarityUnlockLevel(rarity);
 }
 
-// 修为槽曲线设计：基础按 level^1.5 平滑增长（同一大境界内，槽位一级比一级长一点，
-// 但增速温和）；每跨入一个新的"大境界"（武师/武宗/武王/…/武神）时额外叠加一档
-// 突破瓶颈系数，制造出网文里常见的"境界瓶颈"——越到后期，突破所需修为的跳变
-// 越明显，符合"越来越长"的直觉，同时不会让同一境界内的日常升级失控爆炸。
+// 修为槽曲线设计：分段函数——前 10 级（武仆+武者）用较平缓的 level^1.3 曲线，
+// 让前期升级飞快、反馈密集；从武师开始切换到 level^1.5 主曲线（带偏移衔接），
+// 配合境界瓶颈系数（EXP_TIER_STEP），后期突破有明显的"瓶颈感"但不至于离谱。
+const EARLY_BASE = 3000;
+const EARLY_EXP = 1.3;
+const LATE_BASE = 12000;
+const LATE_EXP = 1.5;
+/** Offset so the late curve picks up where the early curve left off at Lv10 (tier-0 baseline). */
+const LATE_CURVE_OFFSET = LATE_BASE * Math.pow(9, LATE_EXP) - EARLY_BASE * Math.pow(9, EARLY_EXP);
+
 const TIER_GROUPS: Array<(name: string) => boolean> = [
   (n) => n === '武仆' || n.startsWith('武者'),
   (n) => n === '武师' || n === '大武师',
@@ -353,17 +359,18 @@ const EXP_TIER_STEP = 0.25;
 /** Total lifetime exp required to reach a given level (level 1 = 0 exp). */
 export function expForLevel(level: number): number {
   if (level <= 1) return 0;
-  // Base scaled to match the boosted idle rates so time-to-level pace is preserved;
-  // the raw numbers (bar totals, "+N exp" popups) read much bigger and more satisfying.
-  const base = 12000 * Math.pow(level - 1, 1.5);
   const tierMultiplier = 1 + EXP_TIER_STEP * realmTierIndex(level);
-  return Math.floor(base * tierMultiplier);
+  if (level <= 10) {
+    return Math.floor(EARLY_BASE * Math.pow(level - 1, EARLY_EXP) * tierMultiplier);
+  }
+  return Math.floor((LATE_BASE * Math.pow(level - 1, LATE_EXP) - LATE_CURVE_OFFSET) * tierMultiplier);
 }
 
 /** Derive current level from total accumulated exp. */
 export function levelForExp(exp: number): number {
   if (exp <= 0) return 1;
-  let level = Math.max(1, Math.floor(1 + Math.pow(exp / 12000, 2 / 3)));
+  // Use the late curve for initial estimate (conservative for low levels), then correct.
+  let level = Math.max(1, Math.floor(1 + Math.pow((exp + LATE_CURVE_OFFSET) / LATE_BASE, 2 / 3)));
   while (expForLevel(level + 1) <= exp) level++;
   while (level > 1 && expForLevel(level) > exp) level--;
   return level;
