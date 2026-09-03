@@ -323,6 +323,9 @@ export function Cultivation({ onExit, user }: CultivationProps) {
               <div className="text-slate-200 font-medium">{stats.speed}</div>
             </div>
           </div>
+          <p className="text-[10px] text-slate-600 mt-2 text-center">
+            速度快的一方先手，且若比对方快还能触发闪避（最高 25%）。装备的功法会按类型加成属性：拳/腿/掌/指/枪/剑法→攻击，内功→气血与防御，身法→速度。
+          </p>
         </div>
 
         <div className="w-full max-w-md space-y-2.5">

@@ -29,6 +29,7 @@ export interface LogEntry {
   rarity: string;
   damage: number;
   crit: boolean;
+  dodged: boolean;
   targetHpAfter: number;
   targetMaxHp: number;
   text: string;
@@ -67,6 +68,14 @@ function rarityCritBonus(rarity: string | undefined): number {
   return idx * 0.02;
 }
 
+/** Speed's second job (besides turn order): a defender faster than the attacker has a capped chance to fully dodge. */
+const DODGE_SPEED_FACTOR = 0.004;
+const MAX_DODGE_CHANCE = 0.25;
+
+function dodgeChanceFor(defenderSpeed: number, attackerSpeed: number): number {
+  return Math.max(0, Math.min(MAX_DODGE_CHANCE, (defenderSpeed - attackerSpeed) * DODGE_SPEED_FACTOR));
+}
+
 export function simulateBattle(
   challenger: BattleFighter,
   opponent: BattleFighter,
@@ -96,6 +105,27 @@ export function simulateBattle(
   ) {
     const move = equipped[(turnNo - 1) % equipped.length];
     const def = TECHNIQUE_MAP[move.id];
+    const moveName = def?.name || '普通攻击';
+
+    const isDodged = rng() < dodgeChanceFor(target.stats.speed, actor.stats.speed);
+    if (isDodged) {
+      log.push({
+        turn: turnNo,
+        actorId: actor.userId,
+        actorName: actor.name,
+        targetName: target.name,
+        techniqueName: moveName,
+        rarity: def?.rarity || '',
+        damage: 0,
+        crit: false,
+        dodged: true,
+        targetHpAfter: targetHpRef.hp,
+        targetMaxHp: target.stats.maxHp,
+        text: `${actor.name} 施展「${moveName}」，但 ${target.name} 身法轻盈，敏捷避开了这一击！`,
+      });
+      return;
+    }
+
     const mult = techniqueMultiplier(move);
     const isCrit = rng() < 0.15 + rarityCritBonus(def?.rarity);
     const variance = 0.85 + rng() * 0.3; // 0.85x ~ 1.15x
@@ -109,13 +139,14 @@ export function simulateBattle(
       actorId: actor.userId,
       actorName: actor.name,
       targetName: target.name,
-      techniqueName: def?.name || '普通攻击',
+      techniqueName: moveName,
       rarity: def?.rarity || '',
       damage,
       crit: isCrit,
+      dodged: false,
       targetHpAfter: targetHpRef.hp,
       targetMaxHp: target.stats.maxHp,
-      text: `${actor.name} 施展「${def?.name || '普通攻击'}」，对 ${target.name} 造成 ${damage} 点伤害${isCrit ? '（暴击！）' : ''}，${target.name} 剩余生命 ${targetHpRef.hp}/${target.stats.maxHp}`,
+      text: `${actor.name} 施展「${moveName}」，对 ${target.name} 造成 ${damage} 点伤害${isCrit ? '（暴击！）' : ''}，${target.name} 剩余生命 ${targetHpRef.hp}/${target.stats.maxHp}`,
     });
   }
 

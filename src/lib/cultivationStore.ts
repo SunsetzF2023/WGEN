@@ -167,8 +167,38 @@ export function cultivatorRealmName(c: Cultivator): string {
   return realmForLevel(cultivatorLevel(c)).name;
 }
 
+/**
+ * Passive stat multipliers granted by currently-equipped techniques. Each technique's
+ * "battle power" (baseMultiplier + multiplierPerLevel*(level-1)) contributes a small
+ * permanent bonus to a stat matching its type — offensive types (拳/腿/掌/指/枪/剑法)
+ * boost attack, 内功 boosts maxHp+defense, 身法 boosts speed. This is what makes
+ * equipping/unequipping a technique visibly change your stat panel.
+ */
+const PASSIVE_STAT_SCALE = 0.04;
+
+export function equippedStatMultipliers(c: Cultivator): { attack: number; defense: number; maxHp: number; speed: number } {
+  let atk = 0, def = 0, hp = 0, spd = 0;
+  for (const id of c.equipped) {
+    const owned = c.techniques.find((t) => t.id === id);
+    const tqDef = TECHNIQUE_MAP[id];
+    if (!owned || !tqDef) continue;
+    const power = (tqDef.baseMultiplier + tqDef.multiplierPerLevel * (owned.level - 1)) * PASSIVE_STAT_SCALE;
+    if (tqDef.type === '内功') { hp += power; def += power; }
+    else if (tqDef.type === '身法') { spd += power; }
+    else { atk += power; }
+  }
+  return { attack: 1 + atk, defense: 1 + def, maxHp: 1 + hp, speed: 1 + spd };
+}
+
 export function cultivatorStats(c: Cultivator) {
-  return statsForLevel(cultivatorLevel(c));
+  const base = statsForLevel(cultivatorLevel(c));
+  const mult = equippedStatMultipliers(c);
+  return {
+    maxHp: Math.round(base.maxHp * mult.maxHp),
+    attack: Math.round(base.attack * mult.attack),
+    defense: Math.round(base.defense * mult.defense),
+    speed: Math.round(base.speed * mult.speed),
+  };
 }
 
 export function expProgress(c: Cultivator): { current: number; needed: number; pct: number } {
@@ -190,7 +220,7 @@ export function toBattleFighter(c: Cultivator): BattleFighter {
     userId: c.ownerId,
     name: c.name,
     level,
-    stats: statsForLevel(level),
+    stats: cultivatorStats(c),
     equipped,
   };
 }
