@@ -4,6 +4,12 @@
 
 export type TechniqueType = '拳法' | '腿法' | '掌法' | '指法' | '身法' | '枪法' | '剑法' | '内功';
 
+/** Special battle effects only available on 帝阶 and above techniques when equipped in one of the 3 battle slots. */
+export type BattleEffect =
+  | { kind: 'combo'; chance: number }       // 连击: chance to attack twice in one turn
+  | { kind: 'revive'; chance: number; healPct: number } // 复活: chance to revive with healPct of max HP on death
+  | { kind: 'shield'; chance: number; absorbPct: number }; // 替死: chance to absorb a lethal blow as a shield
+
 export type Rarity = '黄阶' | '人阶' | '地阶' | '天阶' | '帝阶' | '神阶' | '仙阶';
 
 export const RARITIES: Rarity[] = ['黄阶', '人阶', '地阶', '天阶', '帝阶', '神阶', '仙阶'];
@@ -52,6 +58,8 @@ export interface Technique {
    * is relative to the technique's own passive bonus scale (1.0 = as strong as the gain).
    */
   drawback?: { stat: StatKey; strength: number };
+  /** Special battle effect (only 帝阶 and above). Only active when equipped in a battle slot. */
+  battleEffect?: BattleEffect;
 }
 
 const RAW_TECHNIQUES: Technique[] = [
@@ -126,16 +134,19 @@ const RAW_TECHNIQUES: Technique[] = [
     description: '一拳出，天地失色，唯武帝方可窥其全貌，然全力一击后门户大开，防御大幅下降。',
     baseMultiplier: 2.5, multiplierPerLevel: 0.22, learnCost: 1600, upgradeCost: 420, maxLevel: 10,
     drawback: { stat: 'defense', strength: 0.8 },
+    battleEffect: { kind: 'combo', chance: 0.25 },
   },
   {
     id: 'imperial-sun-scripture', name: '帝曜太阳真经', type: '内功', rarity: '帝阶',
     description: '炼体成日，气血如朝阳生生不息。',
     baseMultiplier: 2.3, multiplierPerLevel: 0.20, learnCost: 1500, upgradeCost: 400, maxLevel: 10,
+    battleEffect: { kind: 'revive', chance: 0.3, healPct: 0.3 },
   },
   {
     id: 'nether-sovereign-blade', name: '幽冥帝刀', type: '剑法', rarity: '帝阶',
     description: '刀出幽冥，斩尽因果，帝阶凶名远扬。',
     baseMultiplier: 2.6, multiplierPerLevel: 0.23, learnCost: 1700, upgradeCost: 450, maxLevel: 10,
+    battleEffect: { kind: 'shield', chance: 0.25, absorbPct: 0.4 },
   },
   // ─── 神阶：武尊往上才配得上的威能 ───
   {
@@ -143,23 +154,27 @@ const RAW_TECHNIQUES: Technique[] = [
     description: '相传曾有武神折戟于此枪之下，然出枪讲究孤注一掷，身形因此滞涩，速度下降。',
     baseMultiplier: 3.2, multiplierPerLevel: 0.28, learnCost: 3800, upgradeCost: 900, maxLevel: 10,
     drawback: { stat: 'speed', strength: 0.7 },
+    battleEffect: { kind: 'combo', chance: 0.35 },
   },
   {
     id: 'divine-devour-palm', name: '吞神噬魂掌', type: '掌法', rarity: '神阶',
     description: '掌心吞吐神念，被拍中者魂魄俱伤，然逆运神念亦反噬己身气血。',
     baseMultiplier: 3.0, multiplierPerLevel: 0.26, learnCost: 3500, upgradeCost: 850, maxLevel: 10,
     drawback: { stat: 'maxHp', strength: 0.5 },
+    battleEffect: { kind: 'shield', chance: 0.3, absorbPct: 0.5 },
   },
   // ─── 仙阶：坊市传说，武皇亦难求 ───
   {
     id: 'immortal-ascension-scripture', name: '太清飞升仙诀', type: '内功', rarity: '仙阶',
     description: '习之若成，隐有飞升霞光自体表溢出。',
     baseMultiplier: 3.8, multiplierPerLevel: 0.34, learnCost: 8000, upgradeCost: 1800, maxLevel: 10,
+    battleEffect: { kind: 'revive', chance: 0.5, healPct: 0.5 },
   },
   {
     id: 'immortal-severing-sword', name: '太虚斩仙剑诀', type: '剑法', rarity: '仙阶',
     description: '剑指九天，仙神亦不可挡其锋芒。',
     baseMultiplier: 4.0, multiplierPerLevel: 0.36, learnCost: 8500, upgradeCost: 1900, maxLevel: 10,
+    battleEffect: { kind: 'combo', chance: 0.45 },
   },
   // ─── 补充：坊市里更常见的"凑数"功法，威力平平，多半是留着卖钱的 ───
   {
@@ -239,8 +254,6 @@ export const CODEX_REWARD: Record<Rarity, number> = {
 };
 
 export const MAX_EQUIPPED = 3;
-/** Max techniques a cultivator can hold at once; extras must be sold for spirit stones first. */
-export const MAX_OWNED_TECHNIQUES = 5;
 
 /** Spirit stones refunded for selling an owned technique (50% of cumulative investment). */
 export function sellValueFor(techniqueId: string, currentLevel: number): number {

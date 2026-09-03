@@ -1,11 +1,11 @@
 import { supabase } from './supabase';
 import {
   levelForExp, expForLevel, statsForLevel, idleRatesForLevel,
-  realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES,
-  rollMarketOffers, MARKET_REFRESH_COST, sellValueFor, CODEX_REWARD,
+  realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP, MAX_EQUIPPED,
+  rollMarketOffers, MARKET_REFRESH_COST, CODEX_REWARD, sellValueFor,
   type BuildingId, type BuildingLevels, DEFAULT_BUILDING_LEVELS,
   buildingCost, buildingRateMultiplier, SKY_WORKSHOP_WEIGHT_PER_LEVEL,
-  type StatKey,
+  type StatKey, RARITIES,
 } from './cultivationData';
 import type { OwnedTechnique, BattleFighter, BattleResult } from './cultivationBattle';
 import { simulateBattle } from './cultivationBattle';
@@ -174,17 +174,17 @@ export function cultivatorRealmName(c: Cultivator): string {
 }
 
 /**
- * Passive stat bonuses granted by currently-equipped techniques. Each technique's
- * "battle power" (baseMultiplier + multiplierPerLevel*(level-1)) contributes a small
- * permanent bonus matching its type — this is what makes equipping/unequipping a
- * technique visibly change every entry on your stat panel, not just battle damage:
+ * Passive stat bonuses from ALL owned techniques — not just equipped ones.
+ * For each technique type (拳法/剑法/内功 etc.), only the highest-rarity owned technique
+ * contributes its bonus. This prevents infinite stacking while still rewarding collection
+ * and progression to higher-rarity techniques.
  *   拳/腿/掌/枪法 (power strikes)  → attack, crit damage
  *   指/剑法 (precision strikes)   → attack, crit rate
  *   内功 (internal power)         → max HP, defense
  *   身法 (footwork)               → speed, dodge rate, hit rate
  */
-const PASSIVE_STAT_SCALE = 0.12; // multiplicative bonus for attack/defense/maxHp/speed
-const PASSIVE_RATE_SCALE = 0.03; // additive percentage-point bonus for crit/dodge/hit rates
+const PASSIVE_STAT_SCALE = 0.12;
+const PASSIVE_RATE_SCALE = 0.03;
 
 interface StatBonuses {
   attackMult: number;
@@ -197,7 +197,6 @@ interface StatBonuses {
   hitRateAdd: number;
 }
 
-/** Applies a signed delta to whichever stat bucket `stat` refers to (percentage-point add for rate stats, multiplier delta for the rest). */
 function applyStatDelta(bonus: StatBonuses, stat: StatKey, amount: number): void {
   switch (stat) {
     case 'attack': bonus.attackMult += amount; break;
@@ -218,10 +217,20 @@ export function equippedStatBonuses(c: Cultivator): StatBonuses {
     attackMult: 1, defenseMult: 1, maxHpMult: 1, speedMult: 1,
     critRateAdd: 0, critDamageAdd: 0, dodgeRateAdd: 0, hitRateAdd: 0,
   };
-  for (const id of c.equipped) {
-    const owned = c.techniques.find((t) => t.id === id);
-    const tqDef = TECHNIQUE_MAP[id];
-    if (!owned || !tqDef) continue;
+  // For each technique type, find the highest-rarity owned technique.
+  const bestPerType = new Map<string, { owned: OwnedTechnique; rarityIdx: number }>();
+  for (const owned of c.techniques) {
+    const def = TECHNIQUE_MAP[owned.id];
+    if (!def) continue;
+    const rarityIdx = RARITIES.indexOf(def.rarity);
+    const existing = bestPerType.get(def.type);
+    if (!existing || rarityIdx > existing.rarityIdx) {
+      bestPerType.set(def.type, { owned, rarityIdx });
+    }
+  }
+  for (const { owned } of bestPerType.values()) {
+    const tqDef = TECHNIQUE_MAP[owned.id];
+    if (!tqDef) continue;
     const power = tqDef.baseMultiplier + tqDef.multiplierPerLevel * (owned.level - 1);
     const statPower = power * PASSIVE_STAT_SCALE;
     const ratePower = power * PASSIVE_RATE_SCALE;
@@ -240,7 +249,7 @@ export function equippedStatBonuses(c: Cultivator): StatBonuses {
         bonus.attackMult += statPower;
         bonus.critRateAdd += ratePower;
         break;
-      default: // 拳法/腿法/掌法/枪法
+      default:
         bonus.attackMult += statPower;
         bonus.critDamageAdd += ratePower * 1.5;
     }
@@ -362,13 +371,14 @@ export function upgradeCostFor(techniqueId: string, currentLevel: number): numbe
 }
 
 /** Buy (learn) a technique that is currently listed in the cultivator's 坊市 offers.
- *  First-time learning of a technique also grants a one-time 图鉴解锁 spirit stone reward. */
+ *  First-time learning of a technique also grants a one-time 图鉴解锁 spirit stone reward.
+ *  No limit on how many techniques a cultivator can own — all learned techniques contribute
+ *  passive bonuses (highest rarity per type counts) and persist forever. */
 export function buyTechnique(c: Cultivator, techniqueId: string): { cultivator: Cultivator; codexReward: number } | null {
   const def = TECHNIQUE_MAP[techniqueId];
   if (!def) return null;
   if (!c.market.offers.includes(techniqueId)) return null;
   if (c.techniques.some((t) => t.id === techniqueId)) return null;
-  if (c.techniques.length >= MAX_OWNED_TECHNIQUES) return null;
   const cost = learnCostFor(techniqueId);
   if (c.spiritStones < cost) return null;
   const alreadyInCodex = c.codex.includes(techniqueId);
@@ -385,7 +395,7 @@ export function buyTechnique(c: Cultivator, techniqueId: string): { cultivator: 
   };
 }
 
-/** Sell an owned technique back for half its cumulative investment; frees up a slot under MAX_OWNED_TECHNIQUES. */
+/** Sell an owned technique back for 50% of cumulative investment (learn cost + all upgrade costs). */
 export function sellTechnique(c: Cultivator, techniqueId: string): Cultivator | null {
   const owned = c.techniques.find((t) => t.id === techniqueId);
   if (!owned) return null;

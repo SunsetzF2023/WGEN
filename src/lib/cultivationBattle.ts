@@ -2,7 +2,7 @@
 // Deterministic given the same fighters + rng seed; run entirely client-side
 // (whoever initiates the challenge computes the result and stores the log).
 
-import { TECHNIQUE_MAP, RARITIES, type BaseStats } from './cultivationData';
+import { TECHNIQUE_MAP, RARITIES, type BaseStats, type BattleEffect } from './cultivationData';
 
 export interface OwnedTechnique {
   id: string;
@@ -76,6 +76,32 @@ function hitChanceFor(attackerHitRate: number, defenderDodgeRate: number): numbe
   return Math.max(MIN_HIT_CHANCE, Math.min(MAX_HIT_CHANCE, attackerHitRate - defenderDodgeRate));
 }
 
+/** Collect all battle effects from a fighter's equipped techniques. */
+function collectEffects(equipped: OwnedTechnique[]): BattleEffect[] {
+  const effects: BattleEffect[] = [];
+  for (const tech of equipped) {
+    const def = TECHNIQUE_MAP[tech.id];
+    if (def?.battleEffect) effects.push(def.battleEffect);
+  }
+  return effects;
+}
+
+/** Find the best effect of a given kind (highest chance wins). */
+function bestEffect(effects: BattleEffect[], kind: BattleEffect['kind']): BattleEffect | undefined {
+  let best: BattleEffect | undefined;
+  for (const e of effects) {
+    if (e.kind !== kind) continue;
+    if (!best || e.chance > best.chance) best = e;
+  }
+  return best;
+}
+
+interface FighterState {
+  hp: number;
+  maxHp: number;
+  hasRevived: boolean;
+}
+
 export function simulateBattle(
   challenger: BattleFighter,
   opponent: BattleFighter,
@@ -83,25 +109,29 @@ export function simulateBattle(
 ): BattleResult {
   const rng = makeRng(seed);
 
-  let hpA = challenger.stats.maxHp;
-  let hpB = opponent.stats.maxHp;
-
   const equippedA = challenger.equipped.length > 0 ? challenger.equipped : [{ id: 'basic-strike', level: 1 }];
   const equippedB = opponent.equipped.length > 0 ? opponent.equipped : [{ id: 'basic-strike', level: 1 }];
 
-  // Higher speed acts first each round; ties favor the challenger.
+  const effectsA = collectEffects(equippedA);
+  const effectsB = collectEffects(equippedB);
+
+  const stateA: FighterState = { hp: challenger.stats.maxHp, maxHp: challenger.stats.maxHp, hasRevived: false };
+  const stateB: FighterState = { hp: opponent.stats.maxHp, maxHp: opponent.stats.maxHp, hasRevived: false };
+
   const challengerFirst = challenger.stats.speed >= opponent.stats.speed;
 
   const log: LogEntry[] = [];
   const MAX_TURNS = 30;
   let turn = 0;
 
-  function act(
+  function doAttack(
     turnNo: number,
     actor: BattleFighter,
     target: BattleFighter,
-    targetHpRef: { hp: number },
-    equipped: OwnedTechnique[]
+    targetState: FighterState,
+    attackerEffects: BattleEffect[],
+    equipped: OwnedTechnique[],
+    isExtraAttack: boolean
   ) {
     const move = equipped[(turnNo - 1) % equipped.length];
     const def = TECHNIQUE_MAP[move.id];
@@ -119,8 +149,8 @@ export function simulateBattle(
         damage: 0,
         crit: false,
         dodged: true,
-        targetHpAfter: targetHpRef.hp,
-        targetMaxHp: target.stats.maxHp,
+        targetHpAfter: targetState.hp,
+        targetMaxHp: targetState.maxHp,
         text: `${actor.name} 施展「${moveName}」，但 ${target.name} 身法轻盈（闪避率 ${(target.stats.dodgeRate * 100).toFixed(0)}%），敏捷避开了这一击！`,
       });
       return;
@@ -128,13 +158,15 @@ export function simulateBattle(
 
     const mult = techniqueMultiplier(move);
     const isCrit = rng() < actor.stats.critRate + rarityCritBonus(def?.rarity);
-    const variance = 0.92 + rng() * 0.16; // 0.92x ~ 1.08x — tighter than before so real stat gaps decide fights, not luck
+    const variance = 0.92 + rng() * 0.16;
     const mitigation = 40 / (40 + target.stats.defense);
     let raw = actor.stats.attack * mult * variance * mitigation;
     if (isCrit) raw *= actor.stats.critDamage;
     const damage = Math.max(1, Math.round(raw));
-    targetHpRef.hp = Math.max(0, targetHpRef.hp - damage);
 
+    targetState.hp = Math.max(0, targetState.hp - damage);
+
+    const prefix = isExtraAttack ? '⚡连击！' : '';
     log.push({
       turn: turnNo,
       actorId: actor.userId,
@@ -145,42 +177,115 @@ export function simulateBattle(
       damage,
       crit: isCrit,
       dodged: false,
-      targetHpAfter: targetHpRef.hp,
-      targetMaxHp: target.stats.maxHp,
-      text: `${actor.name} 施展「${moveName}」，对 ${target.name} 造成 ${damage} 点伤害${isCrit ? `（会心一击！暴击倍率 ${(actor.stats.critDamage * 100).toFixed(0)}%）` : ''}，${target.name} 剩余生命 ${targetHpRef.hp}/${target.stats.maxHp}`,
+      targetHpAfter: targetState.hp,
+      targetMaxHp: targetState.maxHp,
+      text: `${prefix}${actor.name} 施展「${moveName}」，对 ${target.name} 造成 ${damage} 点伤害${isCrit ? `（会心一击！暴击倍率 ${(actor.stats.critDamage * 100).toFixed(0)}%）` : ''}，${target.name} 剩余生命 ${targetState.hp}/${targetState.maxHp}`,
     });
+
+    // Check combo: chance to attack again
+    if (targetState.hp > 0) {
+      const combo = bestEffect(attackerEffects, 'combo');
+      if (combo && rng() < combo.chance) {
+        doAttack(turnNo, actor, target, targetState, attackerEffects, equipped, true);
+      }
+    }
   }
 
-  const hpARef = { hp: hpA };
-  const hpBRef = { hp: hpB };
+  /** Check if a fighter should be revived or shielded from death. Returns true if they survived. */
+  function checkDeath(
+    fighter: BattleFighter,
+    fighterState: FighterState,
+    fighterEffects: BattleEffect[],
+  ): boolean {
+    if (fighterState.hp > 0) return true;
 
-  while (turn < MAX_TURNS && hpARef.hp > 0 && hpBRef.hp > 0) {
+    // Shield: absorb the lethal blow
+    const shield = bestEffect(fighterEffects, 'shield');
+    if (shield && !fighterState.hasRevived && rng() < shield.chance) {
+      const absorbed = Math.round(fighterState.maxHp * (shield as Extract<BattleEffect, { kind: 'shield' }>).absorbPct);
+      fighterState.hp = absorbed;
+      fighterState.hasRevived = true;
+      log.push({
+        turn: 0,
+        actorId: fighter.userId,
+        actorName: fighter.name,
+        targetName: fighter.name,
+        techniqueName: '护体罡气',
+        rarity: '',
+        damage: 0,
+        crit: false,
+        dodged: false,
+        targetHpAfter: fighterState.hp,
+        targetMaxHp: fighterState.maxHp,
+        text: `🛡️ ${fighter.name} 触发替死效果，罡气护体，恢复 ${absorbed} 点生命！`,
+      });
+      return true;
+    }
+
+    // Revive: come back from death
+    const revive = bestEffect(fighterEffects, 'revive');
+    if (revive && !fighterState.hasRevived && rng() < revive.chance) {
+      const healed = Math.round(fighterState.maxHp * (revive as Extract<BattleEffect, { kind: 'revive' }>).healPct);
+      fighterState.hp = healed;
+      fighterState.hasRevived = true;
+      log.push({
+        turn: 0,
+        actorId: fighter.userId,
+        actorName: fighter.name,
+        targetName: fighter.name,
+        techniqueName: '涅槃重生',
+        rarity: '',
+        damage: 0,
+        crit: false,
+        dodged: false,
+        targetHpAfter: fighterState.hp,
+        targetMaxHp: fighterState.maxHp,
+        text: `✨ ${fighter.name} 触发复活效果，涅槃重生，恢复 ${healed} 点生命！`,
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  while (turn < MAX_TURNS && stateA.hp > 0 && stateB.hp > 0) {
     turn++;
     if (challengerFirst) {
-      act(turn, challenger, opponent, hpBRef, equippedA);
-      if (hpBRef.hp <= 0) break;
-      act(turn, opponent, challenger, hpARef, equippedB);
-      if (hpARef.hp <= 0) break;
+      doAttack(turn, challenger, opponent, stateB, effectsA, equippedA, false);
+      if (stateB.hp <= 0) {
+        if (checkDeath(opponent, stateB, effectsB)) continue;
+        break;
+      }
+      doAttack(turn, opponent, challenger, stateA, effectsB, equippedB, false);
+      if (stateA.hp <= 0) {
+        if (checkDeath(challenger, stateA, effectsA)) continue;
+        break;
+      }
     } else {
-      act(turn, opponent, challenger, hpARef, equippedB);
-      if (hpARef.hp <= 0) break;
-      act(turn, challenger, opponent, hpBRef, equippedA);
-      if (hpBRef.hp <= 0) break;
+      doAttack(turn, opponent, challenger, stateA, effectsB, equippedB, false);
+      if (stateA.hp <= 0) {
+        if (checkDeath(challenger, stateA, effectsA)) continue;
+        break;
+      }
+      doAttack(turn, challenger, opponent, stateB, effectsA, equippedA, false);
+      if (stateB.hp <= 0) {
+        if (checkDeath(opponent, stateB, effectsB)) continue;
+        break;
+      }
     }
   }
 
   let winnerId: string;
   let loserId: string;
-  if (hpARef.hp <= 0 && hpBRef.hp > 0) {
+  if (stateA.hp <= 0 && stateB.hp > 0) {
     winnerId = opponent.userId;
     loserId = challenger.userId;
-  } else if (hpBRef.hp <= 0 && hpARef.hp > 0) {
+  } else if (stateB.hp <= 0 && stateA.hp > 0) {
     winnerId = challenger.userId;
     loserId = opponent.userId;
   } else {
-    // Ran out of turns: whoever has more remaining HP% wins.
-    const pctA = hpARef.hp / challenger.stats.maxHp;
-    const pctB = hpBRef.hp / opponent.stats.maxHp;
+    const pctA = stateA.hp / challenger.stats.maxHp;
+    const pctB = stateB.hp / opponent.stats.maxHp;
     winnerId = pctA >= pctB ? challenger.userId : opponent.userId;
     loserId = winnerId === challenger.userId ? opponent.userId : challenger.userId;
   }

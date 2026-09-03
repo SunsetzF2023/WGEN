@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { signInWithGitHub } from '../lib/supabase';
-import { TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD } from '../lib/cultivationData';
+import { TECHNIQUE_MAP, MAX_EQUIPPED, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD } from '../lib/cultivationData';
 import {
   type Cultivator, type BattleLogRow,
   loadOrCreateMyCultivator, saveCultivator, loadRoster,
@@ -388,7 +388,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center justify-between transition-colors"
           >
             <span>📜 已修功法</span>
-            <span className="text-xs text-slate-400">已修 {me.techniques.length}/{MAX_OWNED_TECHNIQUES} · 已装备 {me.equipped.length}/{MAX_EQUIPPED}</span>
+            <span className="text-xs text-slate-400">已修 {me.techniques.length} · 已装备 {me.equipped.length}/{MAX_EQUIPPED}</span>
           </button>
           <button
             onClick={() => setView('codex')}
@@ -448,7 +448,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
               const tq = TECHNIQUE_MAP[id];
               if (!tq) return null;
               const owned = me.techniques.some((t) => t.id === tq.id);
-              const atCap = !owned && me.techniques.length >= MAX_OWNED_TECHNIQUES;
+              const atCap = false;
               const cost = learnCostFor(tq.id);
               return (
                 <div key={tq.id} className="rounded-xl border bg-slate-900 border-slate-700 p-3.5">
@@ -483,7 +483,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
         <CultivationHeader title="📜 已修功法" onBack={() => setView('dashboard')} onExit={onExit} />
         <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
-          最多可同时修习 {MAX_OWNED_TECHNIQUES} 门功法，其中最多装备 {MAX_EQUIPPED} 门用于对战。多余的只能卖掉换灵石。
+          所有已修功法均提供被动属性加成（同类型只取最高品阶生效）。装备 {MAX_EQUIPPED} 门用于对战，帝阶以上功法附带特殊战斗效果（连击/复活/替死）。
         </p>
         {me.techniques.length === 0 ? (
           <p className="text-sm text-slate-500 mt-8">尚未修习任何功法，去坊市看看吧。</p>
