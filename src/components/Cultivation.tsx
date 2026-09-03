@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { signInWithGitHub } from '../lib/supabase';
-import { TECHNIQUE_MAP, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD } from '../lib/cultivationData';
+import { TECHNIQUE_MAP, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor, TECHNIQUES, RARITIES, CODEX_REWARD, isBreakthroughLevel, expForLevel } from '../lib/cultivationData';
 import {
   type Cultivator, type BattleLogRow,
   loadOrCreateMyCultivator, saveCultivator, loadRoster,
@@ -9,11 +9,13 @@ import {
   buyTechnique, sellTechnique, refreshMarket, upgradeTechnique, toggleEquipped,
   buildingLevel, buildingUpgradeCost, upgradeBuilding, liveRatesFor,
   challengeCultivator, loadMyBattleLogs, techniqueStatPreview,
+  attemptBreakthrough, applyBreakthroughSuccess, applyBreakthroughFailure,
+  placeAuctionBid, type BreakthroughChallenge,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
 import { generateEvents, collectPlayerEffects, EVENT_TYPE_LABEL, EVENT_TYPE_COLOR, type JianghuEvent } from '../lib/jianghuEvents';
 
-type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex' | 'jianghu';
+type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex' | 'jianghu' | 'breakthrough-result';
 
 interface CultivationProps {
   onExit: () => void;
@@ -67,6 +69,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
   const [busy, setBusy] = useState(false);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [jianghuEvents, setJianghuEvents] = useState<JianghuEvent[]>([]);
+  const [breakthroughResult, setBreakthroughResult] = useState<{ challenge: BreakthroughChallenge; npcBidName: string | null } | null>(null);
   const [popups, setPopups] = useState<{ id: number; text: string; color: string }[]>([]);
   const [liveOffset, setLiveOffset] = useState({ exp: 0, stones: 0 });
   const dirtyRef = useRef(false);
@@ -252,6 +255,30 @@ export function Cultivation({ onExit, user }: CultivationProps) {
     persist(next).finally(() => setBusy(false));
   };
 
+  const handleBreakthrough = () => {
+    if (!me || busy) return;
+    const challenge = attemptBreakthrough(me);
+    if (!challenge) return;
+    setBusy(true);
+    if (challenge.success) {
+      const next = applyBreakthroughSuccess(me, challenge);
+      persist(next).finally(() => setBusy(false));
+    } else {
+      const next = applyBreakthroughFailure(me);
+      persist(next).finally(() => setBusy(false));
+    }
+    setBreakthroughResult({ challenge, npcBidName: null });
+    setView('breakthrough-result');
+  };
+
+  const handleAuctionBid = (amount: number) => {
+    if (!me || busy) return;
+    const result = placeAuctionBid(me, amount);
+    if (!result) return;
+    setBusy(true);
+    persist(result.cultivator).finally(() => setBusy(false));
+  };
+
   const handleUpgradeBuilding = (id: Parameters<typeof upgradeBuilding>[1]) => {
     if (!me || busy) return;
     const next = upgradeBuilding(me, id);
@@ -403,6 +430,24 @@ export function Cultivation({ onExit, user }: CultivationProps) {
           </p>
         </div>
 
+        {(() => {
+          const level = cultivatorLevel(me);
+          const nextLevel = level + 1;
+          const canBreakthrough = isBreakthroughLevel(nextLevel) && me.exp >= expForLevel(nextLevel);
+          if (!canBreakthrough) return null;
+          const nextRealm = realmForLevel(nextLevel);
+          return (
+            <button
+              onClick={handleBreakthrough}
+              disabled={busy}
+              className="w-full max-w-md py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-white font-bold flex items-center justify-between transition-colors animate-pulse"
+            >
+              <span>⚡ 境界突破</span>
+              <span className="text-xs text-amber-100">挑战守关者 → {nextRealm.name}</span>
+            </button>
+          );
+        })()}
+
         <div className="w-full max-w-md space-y-2.5">
           <button
             onClick={() => setView('market')}
@@ -508,11 +553,52 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             })}
           </div>
         )}
+
+        {/* ─── 拍卖 (Auction) ─── */}
+        {me.market.auction && (() => {
+          const auction = me.market.auction;
+          const tq = TECHNIQUE_MAP[auction.techniqueId];
+          if (!tq) return null;
+          const minNextBid = auction.currentBid + Math.max(1, Math.round(auction.basePrice * 0.05));
+          const owned = me.techniques.some((t) => t.id === tq.id);
+          return (
+            <div className="w-full max-w-md mt-4 pb-4">
+              <div className="text-xs text-amber-400 font-medium mb-2">🔨 拍卖会</div>
+              <div className="rounded-xl border-2 border-amber-700/40 bg-gradient-to-b from-amber-950/30 to-slate-900 p-4">
+                <div className="flex items-start justify-between mb-1">
+                  <div>
+                    <span className="text-sm font-bold text-slate-100">{tq.name}</span>
+                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-800 ${RARITY_COLOR[tq.rarity]}`}>{tq.rarity}</span>
+                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{tq.type}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mb-2">{tq.description}</p>
+                <TechniqueStatPills techniqueId={tq.id} level={1} />
+                <div className="text-xs text-slate-400 mb-2">
+                  底价 {auction.basePrice} 灵石 · 当前最高出价 <span className="text-amber-300 font-medium">{auction.currentBid}</span> 灵石
+                </div>
+                {auction.bidHistory.length > 0 && (
+                  <div className="text-[10px] text-slate-500 mb-2 space-y-0.5">
+                    {auction.bidHistory.slice(-3).map((bid, i) => (
+                      <div key={i}>{bid.name} 出价 {bid.amount} 灵石</div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => handleAuctionBid(minNextBid)}
+                  disabled={busy || owned || me.spiritStones < minNextBid}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-30 text-white font-medium transition-colors"
+                >
+                  {owned ? '已拥有' : `🔨 出价 ${minNextBid} 灵石`}
+                </button>
+                <p className="text-[10px] text-slate-600 mt-1.5">出价后 NPC 可能加价，需再次出价。NPC 放弃即得手。</p>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
-
-  // ─── 已修功法 (Owned techniques: upgrade/equip) ───
   if (view === 'techniques') {
     return (
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
@@ -704,6 +790,42 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             })}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ─── 境界突破结算 (Breakthrough Result) ───
+  if (view === 'breakthrough-result' && breakthroughResult) {
+    const { challenge } = breakthroughResult;
+    const nextRealm = realmForLevel(challenge.guardianLevel);
+    return (
+      <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
+        <CultivationHeader title="⚡ 境界突破" onBack={() => setView('dashboard')} onExit={onExit} />
+
+        <div className="w-full max-w-md text-center mb-4">
+          <div className="text-3xl mb-1">{challenge.success ? '🎉' : '💥'}</div>
+          <p className={`text-sm font-medium ${challenge.success ? 'text-emerald-400' : 'text-red-400'}`}>
+            {challenge.success
+              ? `击败 ${challenge.guardianName}！成功突破至 ${nextRealm.name}`
+              : `不敌 ${challenge.guardianName}，突破失败，修为受损`}
+          </p>
+        </div>
+
+        <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+          {challenge.result.log.map((entry, i) => (
+            <div key={i} className="text-xs text-slate-300 border-b border-slate-800/60 pb-2 last:border-0">
+              <span className="text-slate-600 mr-1">回合{entry.turn}·</span>
+              {entry.text}
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={() => { setBreakthroughResult(null); setView('dashboard'); }}
+          className="mt-4 text-xs px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+        >
+          返回主界面
+        </button>
       </div>
     );
   }

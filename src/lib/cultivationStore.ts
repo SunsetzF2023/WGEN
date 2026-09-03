@@ -6,6 +6,8 @@ import {
   type BuildingId, type BuildingLevels, DEFAULT_BUILDING_LEVELS,
   buildingCost, buildingRateMultiplier, SKY_WORKSHOP_WEIGHT_PER_LEVEL,
   type StatKey,
+  guardianNameForLevel, guardianStatsForLevel, guardianTechniqueForLevel,
+  isBreakthroughLevel, rollAuctionItem, nextNpcBid, type AuctionItem,
 } from './cultivationData';
 import type { OwnedTechnique, BattleFighter, BattleResult } from './cultivationBattle';
 import { simulateBattle } from './cultivationBattle';
@@ -16,6 +18,7 @@ const BATTLE_LOGS_TABLE = 'battle_logs';
 export interface MarketState {
   offers: string[]; // technique ids currently purchasable in the 坊市
   refreshedAt: string;
+  auction: AuctionItem | null; // rare technique auction, occasionally available
 }
 
 export interface Cultivator {
@@ -48,7 +51,7 @@ function rowToCultivator(row: Record<string, unknown>): Cultivator {
     spiritStones: Number(row.spirit_stones) || 0,
     techniques: (row.techniques as OwnedTechnique[]) || [],
     equipped: (row.equipped as string[]) || [],
-    market: market && market.offers ? market : { offers: rollMarketOffers(levelForExp(exp), undefined, marketBonusFor(buildings)), refreshedAt: new Date().toISOString() },
+    market: market && market.offers ? { ...market, auction: (market as MarketState).auction ?? null } : { offers: rollMarketOffers(levelForExp(exp), undefined, marketBonusFor(buildings)), refreshedAt: new Date().toISOString(), auction: null },
     buildings,
     codex: (row.codex as string[]) || [],
     lastCollectedAt: (row.last_collected_at as string) || new Date().toISOString(),
@@ -81,7 +84,7 @@ function freshCultivator(ownerId: string, name: string): Cultivator {
     spiritStones: 50,
     techniques: [{ id: 'basic-strike', level: 1 }],
     equipped: ['basic-strike'],
-    market: { offers: rollMarketOffers(1), refreshedAt: now },
+    market: { offers: rollMarketOffers(1), refreshedAt: now, auction: null },
     buildings: { ...DEFAULT_BUILDING_LEVELS },
     codex: ['basic-strike'],
     lastCollectedAt: now,
@@ -402,7 +405,7 @@ export function refreshMarket(c: Cultivator): Cultivator | null {
   return {
     ...c,
     spiritStones: c.spiritStones - MARKET_REFRESH_COST,
-    market: { offers: rollMarketOffers(cultivatorLevel(c), undefined, marketBonusFor(c.buildings)), refreshedAt: new Date().toISOString() },
+    market: { offers: rollMarketOffers(cultivatorLevel(c), undefined, marketBonusFor(c.buildings)), refreshedAt: new Date().toISOString(), auction: rollAuctionItem(cultivatorLevel(c)) },
   };
 }
 
@@ -446,6 +449,126 @@ export function toggleEquipped(c: Cultivator, techniqueId: string): Cultivator {
     return { ...c, equipped: c.equipped.filter((id) => id !== techniqueId) };
   }
   return { ...c, equipped: [...c.equipped, techniqueId] };
+}
+
+// ─── 境界突破守关 (Breakthrough Guardian Challenge) ───
+
+export interface BreakthroughChallenge {
+  guardianName: string;
+  guardianLevel: number;
+  result: BattleResult;
+  success: boolean;
+}
+
+/**
+ * Attempt a breakthrough challenge. If the player's next level crosses into a breakthrough realm,
+ * they must defeat an NPC guardian. On success, exp is set to the threshold for the next level.
+ * On failure, 10% of current exp (above the current level floor) is lost.
+ */
+export function attemptBreakthrough(c: Cultivator): BreakthroughChallenge | null {
+  const level = cultivatorLevel(c);
+  const nextLevel = level + 1;
+  if (!isBreakthroughLevel(nextLevel)) return null;
+
+  const expNeeded = expForLevel(nextLevel);
+  if (c.exp < expNeeded) return null; // not enough exp to attempt
+
+  const guardianName = guardianNameForLevel(nextLevel);
+  const guardianStats = guardianStatsForLevel(nextLevel);
+  const guardianTechId = guardianTechniqueForLevel(nextLevel);
+
+  const playerFighter = toBattleFighter(c);
+  const guardianFighter: BattleFighter = {
+    userId: 'guardian',
+    name: guardianName,
+    level: nextLevel,
+    stats: guardianStats,
+    equipped: [{ id: guardianTechId, level: 1 }],
+  };
+
+  const result = simulateBattle(playerFighter, guardianFighter);
+  const success = result.winnerId === c.ownerId;
+
+  return {
+    guardianName,
+    guardianLevel: nextLevel,
+    result,
+    success,
+  };
+}
+
+/** Apply the result of a successful breakthrough — sets exp to the next level threshold. */
+export function applyBreakthroughSuccess(c: Cultivator, challenge: BreakthroughChallenge): Cultivator {
+  const nextLevel = challenge.guardianLevel;
+  return {
+    ...c,
+    exp: expForLevel(nextLevel),
+  };
+}
+
+/** Apply the result of a failed breakthrough — lose 10% of progress toward next level. */
+export function applyBreakthroughFailure(c: Cultivator): Cultivator {
+  const level = cultivatorLevel(c);
+  const floor = expForLevel(level);
+  const progress = c.exp - floor;
+  const loss = Math.round(progress * 0.1);
+  return {
+    ...c,
+    exp: Math.max(floor, c.exp - loss),
+  };
+}
+
+// ─── 坊市拍卖 (Auction Bidding) ───
+
+/**
+ * Player places a bid on the auction item. The bid must be higher than currentBid.
+ * After the player bids, an NPC may counter-bid (raising the price further).
+ * Returns the updated cultivator (with new auction state) or null if bid fails.
+ */
+export function placeAuctionBid(c: Cultivator, amount: number): { cultivator: Cultivator; npcBid: { name: string; amount: number } | null } | null {
+  if (!c.market.auction) return null;
+  const auction = c.market.auction;
+  if (amount <= auction.currentBid) return null;
+  if (c.spiritStones < amount) return null;
+
+  // NPC may counter-bid
+  const npcBid = nextNpcBid(amount, auction.basePrice);
+
+  if (npcBid) {
+    // NPC outbids the player — auction continues with higher price
+    const newAuction: AuctionItem = {
+      ...auction,
+      currentBid: npcBid.amount,
+      bidHistory: [...auction.bidHistory, { name: '你', amount }, npcBid],
+    };
+    return {
+      cultivator: { ...c, market: { ...c.market, auction: newAuction } },
+      npcBid,
+    };
+  }
+
+  // Player wins the auction — buy the technique
+  const def = TECHNIQUE_MAP[auction.techniqueId];
+  if (!def) return null;
+  const alreadyOwned = c.techniques.some((t) => t.id === auction.techniqueId);
+  const alreadyInCodex = c.codex.includes(auction.techniqueId);
+  const codexReward = alreadyInCodex ? 0 : CODEX_REWARD[def.rarity];
+
+  const newTechniques = alreadyOwned
+    ? c.techniques
+    : [...c.techniques, { id: auction.techniqueId, level: 1 }];
+  const newCodex = alreadyInCodex ? c.codex : [...c.codex, auction.techniqueId];
+
+  return {
+    cultivator: {
+      ...c,
+      spiritStones: c.spiritStones - amount + codexReward,
+      techniques: newTechniques,
+      codex: newCodex,
+      market: { ...c.market, auction: null },
+    },
+    npcBid: null,
+  };
 }
 
 // ─── Battle logs ───

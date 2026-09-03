@@ -515,3 +515,118 @@ export function buildingRateMultiplier(level: number): number {
 
 /** Extra market weight per level granted to the top-unlocked rarity by 天工阁. */
 export const SKY_WORKSHOP_WEIGHT_PER_LEVEL = 0.3;
+
+// ─── 境界突破守关者 (Breakthrough Guardian) ───
+
+const GUARDIAN_PREFIXES = [
+  '枯骨岭', '断魂桥', '忘川河', '幽兰谷', '霜月崖', '烈火山',
+  '碎星谷', '碧波湾', '苍狼原', '桃花渡',
+];
+const GUARDIAN_TITLES = [
+  '守关人', '护道者', '镇关长老', '试炼者', '守门人', '护法',
+  '断道人', '截关散人', '镇守使', '试道者',
+];
+
+export function guardianNameForLevel(level: number): string {
+  const prefix = GUARDIAN_PREFIXES[level % GUARDIAN_PREFIXES.length];
+  const title = GUARDIAN_TITLES[Math.floor(level / 3) % GUARDIAN_TITLES.length];
+  return `${prefix}·${title}`;
+}
+
+/**
+ * Generate a guardian fighter whose stats are roughly 85% of a player at the same level.
+ * The guardian uses a random technique from the pool unlocked at that level.
+ */
+export function guardianStatsForLevel(level: number): BaseStats {
+  const base = statsForLevel(level);
+  const factor = 0.82 + Math.random() * 0.12; // 82%–94% of player base stats
+  return {
+    maxHp: Math.round(base.maxHp * factor),
+    attack: Math.round(base.attack * factor),
+    defense: Math.round(base.defense * factor),
+    speed: Math.round(base.speed * factor),
+    critRate: Math.min(0.4, base.critRate * 0.8),
+    critDamage: base.critDamage * 0.9,
+    dodgeRate: Math.min(0.25, base.dodgeRate * 0.7),
+    hitRate: base.hitRate * 0.95,
+  };
+}
+
+/** Pick a random technique the guardian "uses" — just for flavor in battle log. */
+export function guardianTechniqueForLevel(level: number): string {
+  const pool = TECHNIQUES.filter((t) => isRarityUnlocked(t.rarity, level));
+  if (pool.length === 0) return 'basic-strike';
+  return pool[Math.floor(Math.random() * pool.length)].id;
+}
+
+/** Major realm transitions that require a breakthrough challenge. */
+export const BREAKTHROUGH_REALMS = new Set([
+  '武师', '大武师', '武宗', '大武宗',
+  '武王下品', '武君下品', '武圣下品', '武帝下品', '武尊下品', '武皇下品', '武神',
+]);
+
+/** Check if leveling up to `newLevel` crosses into a breakthrough realm. */
+export function isBreakthroughLevel(newLevel: number): boolean {
+  const realm = realmForLevel(newLevel);
+  return BREAKTHROUGH_REALMS.has(realm.name);
+}
+
+// ─── 坊市拍卖 (Auction) ───
+
+export interface AuctionItem {
+  techniqueId: string;
+  basePrice: number;
+  currentBid: number;
+  /** NPC names who have bid, making the price rise. */
+  bidHistory: { name: string; amount: number }[];
+  expiresAt: string;
+}
+
+const AUCTION_NPC_BIDDERS = [
+  '鲸鲨帮孙二狗', '青云门张三', '黑虎散人', '落叶游侠',
+  '铁骨门赵四', '寒梅山庄李大小姐', '断刀门王五', '听风楼刘六',
+  '碎星谷陈七', '碧波岛周八',
+];
+
+/**
+ * Roll an auction item: a rare technique (帝阶+) with a starting bid.
+ * Only available if the player has unlocked 帝阶 rarity.
+ */
+export function rollAuctionItem(level: number): AuctionItem | null {
+  if (!isRarityUnlocked('帝阶', level)) return null;
+  // 25% chance to have an auction item on each refresh
+  if (Math.random() > 0.25) return null;
+
+  const rarePool = TECHNIQUES.filter((t) =>
+    isRarityUnlocked(t.rarity, level) &&
+    (t.rarity === '帝阶' || t.rarity === '神阶' || t.rarity === '仙阶')
+  );
+  if (rarePool.length === 0) return null;
+
+  const tech = rarePool[Math.floor(Math.random() * rarePool.length)];
+  const basePrice = tech.learnCost * 2; // auction items cost 2x normal learn cost
+
+  // 1-3 NPC bids already placed
+  const numBids = Math.floor(Math.random() * 3) + 1;
+  const bidHistory: { name: string; amount: number }[] = [];
+  let currentBid = basePrice;
+  for (let i = 0; i < numBids; i++) {
+    const bidder = AUCTION_NPC_BIDDERS[Math.floor(Math.random() * AUCTION_NPC_BIDDERS.length)];
+    currentBid = Math.round(currentBid * (1.1 + Math.random() * 0.15));
+    bidHistory.push({ name: bidder, amount: currentBid });
+  }
+
+  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 hours
+
+  return { techniqueId: tech.id, basePrice, currentBid, bidHistory, expiresAt };
+}
+
+/** Player outbids the current price; returns new bid amount and a random NPC counter-bid (or null if NPC gives up). */
+export function nextNpcBid(currentBid: number, basePrice: number): { name: string; amount: number } | null {
+  // NPC has 60% chance to counter-bid, up to 3x base price
+  if (currentBid >= basePrice * 3) return null;
+  if (Math.random() > 0.6) return null;
+  const bidder = AUCTION_NPC_BIDDERS[Math.floor(Math.random() * AUCTION_NPC_BIDDERS.length)];
+  const amount = Math.round(currentBid * (1.08 + Math.random() * 0.12));
+  return { name: bidder, amount };
+}
