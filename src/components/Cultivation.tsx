@@ -19,6 +19,13 @@ interface CultivationProps {
   user: { id: string; name: string } | null;
 }
 
+/** Formats a small per-tick gain for the floating popups: more decimals when the number is tiny, so "+0.02" still reads instead of rounding away to "+0". */
+function formatLiveGain(n: number): string {
+  if (n >= 1) return n.toFixed(1);
+  if (n >= 0.01) return n.toFixed(2);
+  return n.toFixed(3);
+}
+
 function CultivationHeader({ title, onBack, onExit }: { title: string; onBack?: () => void; onExit: () => void }) {
   return (
     <div className="w-full max-w-md flex items-center justify-between mb-4">
@@ -104,6 +111,11 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       const base = meRef.current;
       if (!base) return;
       const { expPerSecond, stonesPerSecond } = liveRatesFor(base);
+      // Always pop a tiny "+0.02" style number every second so gains never look frozen,
+      // even when the underlying rate is well below 1/sec — separate from the whole-unit
+      // fold below, which is what actually gets persisted to `me`/saved.
+      if (expPerSecond > 0) popFloatingText(`+${formatLiveGain(expPerSecond)} 修为`, 'text-amber-400');
+      if (stonesPerSecond > 0) popFloatingText(`+${formatLiveGain(stonesPerSecond)} 灵石`, 'text-emerald-400');
       setLiveOffset((prev) => {
         const nextExp = prev.exp + expPerSecond;
         const nextStones = prev.stones + stonesPerSecond;
@@ -117,8 +129,6 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             spiritStones: prevMe.spiritStones + wholeStones,
             lastCollectedAt: new Date().toISOString(),
           } : prevMe);
-          if (wholeExp > 0) popFloatingText(`+${wholeExp} 修为`, 'text-amber-400');
-          if (wholeStones > 0) popFloatingText(`+${wholeStones} 灵石`, 'text-emerald-400');
         }
         return { exp: nextExp - wholeExp, stones: nextStones - wholeStones };
       });

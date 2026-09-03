@@ -379,7 +379,7 @@ export function idleRatesForLevel(level: number): { expPerHour: number; stonesPe
   const tierBoost = 1 + IDLE_TIER_STEP * realmTierIndex(level);
   return {
     expPerHour: Math.round((60 + level * 14) * tierBoost),
-    stonesPerHour: Math.round((15 + level * 3.5) * tierBoost),
+    stonesPerHour: Math.round((30 + level * 7) * tierBoost),
   };
 }
 
