@@ -226,15 +226,16 @@ export const TECHNIQUE_MAP: Record<string, Technique> = Object.fromEntries(
   TECHNIQUES.map((t) => [t.id, t])
 );
 
-/** One-time spirit stone reward granted the first time a technique of each rarity is learned (图鉴解锁奖励). */
+/** One-time spirit stone reward granted the first time a technique of each rarity is learned (图鉴解锁奖励).
+ *  Scaled to roughly 30-50% of the average technique price in each tier, so the first unlock feels like a meaningful rebate. */
 export const CODEX_REWARD: Record<Rarity, number> = {
-  黄阶: 20,
-  人阶: 80,
-  地阶: 200,
-  天阶: 500,
-  帝阶: 1200,
-  神阶: 3000,
-  仙阶: 8000,
+  黄阶: 100,
+  人阶: 600,
+  地阶: 1600,
+  天阶: 4000,
+  帝阶: 10000,
+  神阶: 24000,
+  仙阶: 60000,
 };
 
 export const MAX_EQUIPPED = 3;
