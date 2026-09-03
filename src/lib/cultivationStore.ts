@@ -168,36 +168,76 @@ export function cultivatorRealmName(c: Cultivator): string {
 }
 
 /**
- * Passive stat multipliers granted by currently-equipped techniques. Each technique's
+ * Passive stat bonuses granted by currently-equipped techniques. Each technique's
  * "battle power" (baseMultiplier + multiplierPerLevel*(level-1)) contributes a small
- * permanent bonus to a stat matching its type — offensive types (拳/腿/掌/指/枪/剑法)
- * boost attack, 内功 boosts maxHp+defense, 身法 boosts speed. This is what makes
- * equipping/unequipping a technique visibly change your stat panel.
+ * permanent bonus matching its type — this is what makes equipping/unequipping a
+ * technique visibly change every entry on your stat panel, not just battle damage:
+ *   拳/腿/掌/枪法 (power strikes)  → attack, crit damage
+ *   指/剑法 (precision strikes)   → attack, crit rate
+ *   内功 (internal power)         → max HP, defense
+ *   身法 (footwork)               → speed, dodge rate, hit rate
  */
-const PASSIVE_STAT_SCALE = 0.04;
+const PASSIVE_STAT_SCALE = 0.04; // multiplicative bonus for attack/defense/maxHp/speed
+const PASSIVE_RATE_SCALE = 0.01; // additive percentage-point bonus for crit/dodge/hit rates
 
-export function equippedStatMultipliers(c: Cultivator): { attack: number; defense: number; maxHp: number; speed: number } {
-  let atk = 0, def = 0, hp = 0, spd = 0;
+interface StatBonuses {
+  attackMult: number;
+  defenseMult: number;
+  maxHpMult: number;
+  speedMult: number;
+  critRateAdd: number;
+  critDamageAdd: number;
+  dodgeRateAdd: number;
+  hitRateAdd: number;
+}
+
+export function equippedStatBonuses(c: Cultivator): StatBonuses {
+  const bonus: StatBonuses = {
+    attackMult: 1, defenseMult: 1, maxHpMult: 1, speedMult: 1,
+    critRateAdd: 0, critDamageAdd: 0, dodgeRateAdd: 0, hitRateAdd: 0,
+  };
   for (const id of c.equipped) {
     const owned = c.techniques.find((t) => t.id === id);
     const tqDef = TECHNIQUE_MAP[id];
     if (!owned || !tqDef) continue;
-    const power = (tqDef.baseMultiplier + tqDef.multiplierPerLevel * (owned.level - 1)) * PASSIVE_STAT_SCALE;
-    if (tqDef.type === '内功') { hp += power; def += power; }
-    else if (tqDef.type === '身法') { spd += power; }
-    else { atk += power; }
+    const power = tqDef.baseMultiplier + tqDef.multiplierPerLevel * (owned.level - 1);
+    const statPower = power * PASSIVE_STAT_SCALE;
+    const ratePower = power * PASSIVE_RATE_SCALE;
+    switch (tqDef.type) {
+      case '内功':
+        bonus.maxHpMult += statPower;
+        bonus.defenseMult += statPower;
+        break;
+      case '身法':
+        bonus.speedMult += statPower;
+        bonus.dodgeRateAdd += ratePower;
+        bonus.hitRateAdd += ratePower * 0.5;
+        break;
+      case '指法':
+      case '剑法':
+        bonus.attackMult += statPower;
+        bonus.critRateAdd += ratePower;
+        break;
+      default: // 拳法/腿法/掌法/枪法
+        bonus.attackMult += statPower;
+        bonus.critDamageAdd += ratePower * 1.5;
+    }
   }
-  return { attack: 1 + atk, defense: 1 + def, maxHp: 1 + hp, speed: 1 + spd };
+  return bonus;
 }
 
 export function cultivatorStats(c: Cultivator) {
   const base = statsForLevel(cultivatorLevel(c));
-  const mult = equippedStatMultipliers(c);
+  const bonus = equippedStatBonuses(c);
   return {
-    maxHp: Math.round(base.maxHp * mult.maxHp),
-    attack: Math.round(base.attack * mult.attack),
-    defense: Math.round(base.defense * mult.defense),
-    speed: Math.round(base.speed * mult.speed),
+    maxHp: Math.round(base.maxHp * bonus.maxHpMult),
+    attack: Math.round(base.attack * bonus.attackMult),
+    defense: Math.round(base.defense * bonus.defenseMult),
+    speed: Math.round(base.speed * bonus.speedMult),
+    critRate: Math.min(0.75, base.critRate + bonus.critRateAdd),
+    critDamage: base.critDamage + bonus.critDamageAdd,
+    dodgeRate: Math.min(0.6, base.dodgeRate + bonus.dodgeRateAdd),
+    hitRate: Math.min(0.99, base.hitRate + bonus.hitRateAdd),
   };
 }
 

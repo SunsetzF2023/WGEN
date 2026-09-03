@@ -346,6 +346,14 @@ export interface BaseStats {
   attack: number;
   defense: number;
   speed: number;
+  /** 0..1 chance to land a critical hit. */
+  critRate: number;
+  /** Damage multiplier applied on a critical hit, e.g. 1.5 = +50% damage. */
+  critDamage: number;
+  /** 0..1 chance to fully evade an incoming attack. */
+  dodgeRate: number;
+  /** 0..1 base chance to land an attack before the target's dodge is subtracted. */
+  hitRate: number;
 }
 
 export function statsForLevel(level: number): BaseStats {
@@ -354,6 +362,10 @@ export function statsForLevel(level: number): BaseStats {
     attack: Math.round(12 + level * 3.2),
     defense: Math.round(6 + level * 1.6),
     speed: Math.round(10 + level * 0.6),
+    critRate: Math.min(0.45, 0.05 + level * 0.0015),
+    critDamage: Math.min(3.0, 1.5 + level * 0.004),
+    dodgeRate: Math.min(0.35, 0.05 + level * 0.001),
+    hitRate: Math.min(0.99, 0.9 + level * 0.0006),
   };
 }
 

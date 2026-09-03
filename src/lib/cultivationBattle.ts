@@ -60,20 +60,20 @@ function techniqueMultiplier(owned: OwnedTechnique): number {
   return def.baseMultiplier + def.multiplierPerLevel * (owned.level - 1);
 }
 
-/** Higher-rarity techniques carry a small extra crit chance on top of the base 15%. */
+/** Higher-rarity techniques carry a small extra crit chance on top of the fighter's base crit rate stat. */
 function rarityCritBonus(rarity: string | undefined): number {
   if (!rarity) return 0;
   const idx = RARITIES.indexOf(rarity as (typeof RARITIES)[number]);
   if (idx < 0) return 0;
-  return idx * 0.02;
+  return idx * 0.015;
 }
 
-/** Speed's second job (besides turn order): a defender faster than the attacker has a capped chance to fully dodge. */
-const DODGE_SPEED_FACTOR = 0.004;
-const MAX_DODGE_CHANCE = 0.25;
+/** Hit vs dodge is a direct stat contest (both explicit character stats), clamped so neither always lands nor always misses. */
+const MIN_HIT_CHANCE = 0.5;
+const MAX_HIT_CHANCE = 0.98;
 
-function dodgeChanceFor(defenderSpeed: number, attackerSpeed: number): number {
-  return Math.max(0, Math.min(MAX_DODGE_CHANCE, (defenderSpeed - attackerSpeed) * DODGE_SPEED_FACTOR));
+function hitChanceFor(attackerHitRate: number, defenderDodgeRate: number): number {
+  return Math.max(MIN_HIT_CHANCE, Math.min(MAX_HIT_CHANCE, attackerHitRate - defenderDodgeRate));
 }
 
 export function simulateBattle(
@@ -107,7 +107,7 @@ export function simulateBattle(
     const def = TECHNIQUE_MAP[move.id];
     const moveName = def?.name || '普通攻击';
 
-    const isDodged = rng() < dodgeChanceFor(target.stats.speed, actor.stats.speed);
+    const isDodged = rng() >= hitChanceFor(actor.stats.hitRate, target.stats.dodgeRate);
     if (isDodged) {
       log.push({
         turn: turnNo,
@@ -121,16 +121,17 @@ export function simulateBattle(
         dodged: true,
         targetHpAfter: targetHpRef.hp,
         targetMaxHp: target.stats.maxHp,
-        text: `${actor.name} 施展「${moveName}」，但 ${target.name} 身法轻盈，敏捷避开了这一击！`,
+        text: `${actor.name} 施展「${moveName}」，但 ${target.name} 身法轻盈（闪避率 ${(target.stats.dodgeRate * 100).toFixed(0)}%），敏捷避开了这一击！`,
       });
       return;
     }
 
     const mult = techniqueMultiplier(move);
-    const isCrit = rng() < 0.15 + rarityCritBonus(def?.rarity);
-    const variance = 0.85 + rng() * 0.3; // 0.85x ~ 1.15x
-    let raw = actor.stats.attack * mult * variance - target.stats.defense * 0.5;
-    if (isCrit) raw *= 1.6;
+    const isCrit = rng() < actor.stats.critRate + rarityCritBonus(def?.rarity);
+    const variance = 0.92 + rng() * 0.16; // 0.92x ~ 1.08x — tighter than before so real stat gaps decide fights, not luck
+    const mitigation = 100 / (100 + target.stats.defense);
+    let raw = actor.stats.attack * mult * variance * mitigation;
+    if (isCrit) raw *= actor.stats.critDamage;
     const damage = Math.max(1, Math.round(raw));
     targetHpRef.hp = Math.max(0, targetHpRef.hp - damage);
 
@@ -146,7 +147,7 @@ export function simulateBattle(
       dodged: false,
       targetHpAfter: targetHpRef.hp,
       targetMaxHp: target.stats.maxHp,
-      text: `${actor.name} 施展「${moveName}」，对 ${target.name} 造成 ${damage} 点伤害${isCrit ? '（暴击！）' : ''}，${target.name} 剩余生命 ${targetHpRef.hp}/${target.stats.maxHp}`,
+      text: `${actor.name} 施展「${moveName}」，对 ${target.name} 造成 ${damage} 点伤害${isCrit ? `（会心一击！暴击倍率 ${(actor.stats.critDamage * 100).toFixed(0)}%）` : ''}，${target.name} 剩余生命 ${targetHpRef.hp}/${target.stats.maxHp}`,
     });
   }
 

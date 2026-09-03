@@ -322,9 +322,25 @@ export function Cultivation({ onExit, user }: CultivationProps) {
               <div className="text-slate-500">速度</div>
               <div className="text-slate-200 font-medium">{stats.speed}</div>
             </div>
+            <div className="bg-slate-800/60 rounded-lg py-2">
+              <div className="text-slate-500">暴击率</div>
+              <div className="text-rose-300 font-medium">{(stats.critRate * 100).toFixed(1)}%</div>
+            </div>
+            <div className="bg-slate-800/60 rounded-lg py-2">
+              <div className="text-slate-500">暴击伤害</div>
+              <div className="text-rose-300 font-medium">{(stats.critDamage * 100).toFixed(0)}%</div>
+            </div>
+            <div className="bg-slate-800/60 rounded-lg py-2">
+              <div className="text-slate-500">闪避率</div>
+              <div className="text-sky-300 font-medium">{(stats.dodgeRate * 100).toFixed(1)}%</div>
+            </div>
+            <div className="bg-slate-800/60 rounded-lg py-2">
+              <div className="text-slate-500">命中率</div>
+              <div className="text-sky-300 font-medium">{(stats.hitRate * 100).toFixed(1)}%</div>
+            </div>
           </div>
           <p className="text-[10px] text-slate-600 mt-2 text-center">
-            速度快的一方先手，且若比对方快还能触发闪避（最高 25%）。装备的功法会按类型加成属性：拳/腿/掌/指/枪/剑法→攻击，内功→气血与防御，身法→速度。
+            速度快的一方先手；命中率减去对方闪避率决定攻击是否命中。装备的功法按类型加成：拳/腿/掌/枪法→攻击+暴击伤害，指/剑法→攻击+暴击率，内功→气血+防御，身法→速度+闪避+命中。
           </p>
         </div>
 
