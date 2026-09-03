@@ -122,6 +122,7 @@ create table if not exists cultivators (
   techniques jsonb not null default '[{"id":"basic-strike","level":1}]'::jsonb,
   equipped jsonb not null default '["basic-strike"]'::jsonb,
   market jsonb not null default '{"offers":[],"refreshedAt":null}'::jsonb,
+  buildings jsonb not null default '{"spirit-hall":0,"scripture-pavilion":0,"sky-workshop":0}'::jsonb,
   last_collected_at timestamptz not null default now(),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
@@ -129,6 +130,7 @@ create table if not exists cultivators (
 
 -- Idempotent for deployments that already ran an earlier version of this schema.
 alter table cultivators add column if not exists market jsonb not null default '{"offers":[],"refreshedAt":null}'::jsonb;
+alter table cultivators add column if not exists buildings jsonb not null default '{"spirit-hall":0,"scripture-pavilion":0,"sky-workshop":0}'::jsonb;
 
 alter table cultivators enable row level security;
 

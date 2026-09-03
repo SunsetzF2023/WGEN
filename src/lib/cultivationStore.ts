@@ -1,8 +1,10 @@
 import { supabase } from './supabase';
 import {
   levelForExp, expForLevel, statsForLevel, idleRatesForLevel,
-  realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP, MAX_EQUIPPED,
-  rollMarketOffers, MARKET_REFRESH_COST,
+  realmForLevel, MAX_OFFLINE_HOURS, TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES,
+  rollMarketOffers, MARKET_REFRESH_COST, sellValueFor,
+  type BuildingId, type BuildingLevels, DEFAULT_BUILDING_LEVELS,
+  buildingCost, buildingRateMultiplier, SKY_WORKSHOP_WEIGHT_PER_LEVEL,
 } from './cultivationData';
 import type { OwnedTechnique, BattleFighter, BattleResult } from './cultivationBattle';
 import { simulateBattle } from './cultivationBattle';
@@ -23,13 +25,19 @@ export interface Cultivator {
   techniques: OwnedTechnique[];
   equipped: string[]; // technique ids, max MAX_EQUIPPED
   market: MarketState;
+  buildings: BuildingLevels;
   lastCollectedAt: string; // ISO timestamp
   updatedAt: string;
+}
+
+function marketBonusFor(buildings: BuildingLevels): number {
+  return (buildings['sky-workshop'] || 0) * SKY_WORKSHOP_WEIGHT_PER_LEVEL;
 }
 
 function rowToCultivator(row: Record<string, unknown>): Cultivator {
   const market = (row.market as MarketState | null) || null;
   const exp = Number(row.exp) || 0;
+  const buildings: BuildingLevels = { ...DEFAULT_BUILDING_LEVELS, ...((row.buildings as Partial<BuildingLevels>) || {}) };
   return {
     ownerId: row.owner_id as string,
     name: (row.name as string) || '无名武者',
@@ -37,7 +45,8 @@ function rowToCultivator(row: Record<string, unknown>): Cultivator {
     spiritStones: Number(row.spirit_stones) || 0,
     techniques: (row.techniques as OwnedTechnique[]) || [],
     equipped: (row.equipped as string[]) || [],
-    market: market && market.offers ? market : { offers: rollMarketOffers(levelForExp(exp)), refreshedAt: new Date().toISOString() },
+    market: market && market.offers ? market : { offers: rollMarketOffers(levelForExp(exp), undefined, marketBonusFor(buildings)), refreshedAt: new Date().toISOString() },
+    buildings,
     lastCollectedAt: (row.last_collected_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),
   };
@@ -52,6 +61,7 @@ function cultivatorToRow(c: Cultivator): Record<string, unknown> {
     techniques: c.techniques,
     equipped: c.equipped,
     market: c.market,
+    buildings: c.buildings,
     last_collected_at: c.lastCollectedAt,
     updated_at: new Date().toISOString(),
   };
@@ -67,6 +77,7 @@ function freshCultivator(ownerId: string, name: string): Cultivator {
     techniques: [{ id: 'basic-strike', level: 1 }],
     equipped: ['basic-strike'],
     market: { offers: rollMarketOffers(1), refreshedAt: now },
+    buildings: { ...DEFAULT_BUILDING_LEVELS },
     lastCollectedAt: now,
     updatedAt: now,
   };
@@ -116,9 +127,11 @@ export function computeIdleGains(c: Cultivator): IdleGains {
   const { expPerHour, stonesPerHour } = idleRatesForLevel(level);
   const elapsedMs = Date.now() - new Date(c.lastCollectedAt).getTime();
   const hours = Math.min(MAX_OFFLINE_HOURS, Math.max(0, elapsedMs / (1000 * 60 * 60)));
+  const expMultiplier = buildingRateMultiplier(c.buildings['scripture-pavilion'] || 0);
+  const stoneMultiplier = buildingRateMultiplier(c.buildings['spirit-hall'] || 0);
   return {
-    exp: Math.floor(expPerHour * hours),
-    spiritStones: Math.floor(stonesPerHour * hours),
+    exp: Math.floor(expPerHour * expMultiplier * hours),
+    spiritStones: Math.floor(stonesPerHour * stoneMultiplier * hours),
     hours,
   };
 }
@@ -188,6 +201,7 @@ export function buyTechnique(c: Cultivator, techniqueId: string): Cultivator | n
   if (!def) return null;
   if (!c.market.offers.includes(techniqueId)) return null;
   if (c.techniques.some((t) => t.id === techniqueId)) return null;
+  if (c.techniques.length >= MAX_OWNED_TECHNIQUES) return null; // 已满，需先卖出一门
   const cost = learnCostFor(techniqueId);
   if (c.spiritStones < cost) return null;
   return {
@@ -198,13 +212,46 @@ export function buyTechnique(c: Cultivator, techniqueId: string): Cultivator | n
   };
 }
 
-/** Re-roll the 坊市 offers (costs spirit stones, unlocked rarities scale with current level). */
+/** Sell an owned technique back for half its cumulative investment; frees up a slot under MAX_OWNED_TECHNIQUES. */
+export function sellTechnique(c: Cultivator, techniqueId: string): Cultivator | null {
+  const owned = c.techniques.find((t) => t.id === techniqueId);
+  if (!owned) return null;
+  const refund = sellValueFor(techniqueId, owned.level);
+  return {
+    ...c,
+    spiritStones: c.spiritStones + refund,
+    techniques: c.techniques.filter((t) => t.id !== techniqueId),
+    equipped: c.equipped.filter((id) => id !== techniqueId),
+  };
+}
+
+/** Re-roll the 坊市 offers (costs spirit stones, unlocked rarities scale with current level, 天工阁 boosts the top tier). */
 export function refreshMarket(c: Cultivator): Cultivator | null {
   if (c.spiritStones < MARKET_REFRESH_COST) return null;
   return {
     ...c,
     spiritStones: c.spiritStones - MARKET_REFRESH_COST,
-    market: { offers: rollMarketOffers(cultivatorLevel(c)), refreshedAt: new Date().toISOString() },
+    market: { offers: rollMarketOffers(cultivatorLevel(c), undefined, marketBonusFor(c.buildings)), refreshedAt: new Date().toISOString() },
+  };
+}
+
+// ─── 建筑 (Buildings) ───
+
+export function buildingLevel(c: Cultivator, id: BuildingId): number {
+  return c.buildings[id] || 0;
+}
+
+export function buildingUpgradeCost(c: Cultivator, id: BuildingId): number {
+  return buildingCost(id, buildingLevel(c, id));
+}
+
+export function upgradeBuilding(c: Cultivator, id: BuildingId): Cultivator | null {
+  const cost = buildingUpgradeCost(c, id);
+  if (c.spiritStones < cost) return null;
+  return {
+    ...c,
+    spiritStones: c.spiritStones - cost,
+    buildings: { ...c.buildings, [id]: buildingLevel(c, id) + 1 },
   };
 }
 

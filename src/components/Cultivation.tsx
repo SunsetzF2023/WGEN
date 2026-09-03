@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { signInWithGitHub } from '../lib/supabase';
-import { TECHNIQUE_MAP, MAX_EQUIPPED, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST } from '../lib/cultivationData';
+import { TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor } from '../lib/cultivationData';
 import {
   type Cultivator, type BattleLogRow,
   loadOrCreateMyCultivator, saveCultivator, loadRoster,
   computeIdleGains, applyIdleGains, cultivatorLevel, cultivatorRealmName,
   cultivatorStats, expProgress, learnCostFor, upgradeCostFor,
-  buyTechnique, refreshMarket, upgradeTechnique, toggleEquipped,
+  buyTechnique, sellTechnique, refreshMarket, upgradeTechnique, toggleEquipped,
+  buildingLevel, buildingUpgradeCost, upgradeBuilding,
   challengeCultivator, loadMyBattleLogs,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
 
-type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'roster' | 'history' | 'battle-result';
+type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result';
 
 interface CultivationProps {
   onExit: () => void;
@@ -114,6 +115,22 @@ export function Cultivation({ onExit, user }: CultivationProps) {
     if (!me || busy) return;
     const next = toggleEquipped(me, id);
     if (next === me) return;
+    setBusy(true);
+    persist(next).finally(() => setBusy(false));
+  };
+
+  const handleSell = (id: string) => {
+    if (!me || busy) return;
+    const next = sellTechnique(me, id);
+    if (!next) return;
+    setBusy(true);
+    persist(next).finally(() => setBusy(false));
+  };
+
+  const handleUpgradeBuilding = (id: Parameters<typeof upgradeBuilding>[1]) => {
+    if (!me || busy) return;
+    const next = upgradeBuilding(me, id);
+    if (!next) return;
     setBusy(true);
     persist(next).finally(() => setBusy(false));
   };
@@ -246,7 +263,14 @@ export function Cultivation({ onExit, user }: CultivationProps) {
             className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center justify-between transition-colors"
           >
             <span>📜 已修功法</span>
-            <span className="text-xs text-slate-400">已修 {me.techniques.length} · 已装备 {me.equipped.length}/{MAX_EQUIPPED}</span>
+            <span className="text-xs text-slate-400">已修 {me.techniques.length}/{MAX_OWNED_TECHNIQUES} · 已装备 {me.equipped.length}/{MAX_EQUIPPED}</span>
+          </button>
+          <button
+            onClick={() => setView('buildings')}
+            className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium flex items-center justify-between transition-colors"
+          >
+            <span>🏗️ 建筑</span>
+            <span className="text-xs text-slate-400">提升挂机效率</span>
           </button>
           <button
             onClick={() => { setView('roster'); refreshRoster(); }}
@@ -292,6 +316,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
               const tq = TECHNIQUE_MAP[id];
               if (!tq) return null;
               const owned = me.techniques.some((t) => t.id === tq.id);
+              const atCap = !owned && me.techniques.length >= MAX_OWNED_TECHNIQUES;
               const cost = learnCostFor(tq.id);
               return (
                 <div key={tq.id} className="rounded-xl border bg-slate-900 border-slate-700 p-3.5">
@@ -305,10 +330,10 @@ export function Cultivation({ onExit, user }: CultivationProps) {
                   <p className="text-xs text-slate-500 mb-2.5">{tq.description}</p>
                   <button
                     onClick={() => handleBuy(tq.id)}
-                    disabled={busy || owned || me.spiritStones < cost}
+                    disabled={busy || owned || atCap || me.spiritStones < cost}
                     className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white transition-colors"
                   >
-                    {owned ? '已修习' : `💎 购买习得 (${cost} 灵石)`}
+                    {owned ? '已修习' : atCap ? '修习上限，请先卖出' : `💎 购买习得 (${cost} 灵石)`}
                   </button>
                 </div>
               );
@@ -325,7 +350,7 @@ export function Cultivation({ onExit, user }: CultivationProps) {
       <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
         <CultivationHeader title="📜 已修功法" onBack={() => setView('dashboard')} onExit={onExit} />
         <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
-          最多可装备 {MAX_EQUIPPED} 门功法用于对战，装备的功法会在战斗中轮流施展。前往坊市习得新功法。
+          最多可同时修习 {MAX_OWNED_TECHNIQUES} 门功法，其中最多装备 {MAX_EQUIPPED} 门用于对战。多余的只能卖掉换灵石。
         </p>
         {me.techniques.length === 0 ? (
           <p className="text-sm text-slate-500 mt-8">尚未修习任何功法，去坊市看看吧。</p>
@@ -369,12 +394,53 @@ export function Cultivation({ onExit, user }: CultivationProps) {
                     >
                       {isEquipped ? '卸下' : '装备'}
                     </button>
+                    <button
+                      onClick={() => handleSell(tq.id)}
+                      disabled={busy}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-400 transition-colors ml-auto"
+                    >
+                      卖出 (+{sellValueFor(tq.id, owned.level)} 灵石)
+                    </button>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ─── 建筑 (Buildings) ───
+  if (view === 'buildings') {
+    return (
+      <div className="w-full h-full flex flex-col items-center bg-slate-950 overflow-auto py-4 px-4">
+        <CultivationHeader title="🏗️ 建筑" onBack={() => setView('dashboard')} onExit={onExit} />
+        <p className="text-xs text-slate-500 mb-3 max-w-md text-center">
+          用灵石升级建筑，永久小幅提升挂机效率；等级越高造价越贵，可以一直投资下去。
+        </p>
+        <div className="w-full max-w-md space-y-2.5 pb-4">
+          {BUILDINGS.map((b) => {
+            const lvl = buildingLevel(me, b.id);
+            const cost = buildingUpgradeCost(me, b.id);
+            return (
+              <div key={b.id} className="rounded-xl border bg-slate-900 border-slate-700 p-3.5">
+                <div className="flex items-start justify-between mb-1">
+                  <span className="text-sm font-bold text-slate-100">{b.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-400">Lv.{lvl}</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-2.5">{b.description}</p>
+                <button
+                  onClick={() => handleUpgradeBuilding(b.id)}
+                  disabled={busy || me.spiritStones < cost}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white transition-colors"
+                >
+                  ⬆️ 升级 ({cost} 灵石)
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
