@@ -11,7 +11,7 @@ import {
   challengeCultivator, loadMyBattleLogs, techniqueStatPreview,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
-import { generateEvents, EVENT_TYPE_LABEL, EVENT_TYPE_COLOR, type JianghuEvent } from '../lib/jianghuEvents';
+import { generateEvents, collectPlayerEffects, EVENT_TYPE_LABEL, EVENT_TYPE_COLOR, type JianghuEvent } from '../lib/jianghuEvents';
 
 type View = 'loading' | 'login' | 'dashboard' | 'market' | 'techniques' | 'buildings' | 'roster' | 'history' | 'battle-result' | 'codex' | 'jianghu';
 
@@ -114,18 +114,36 @@ export function Cultivation({ onExit, user }: CultivationProps) {
     setHistory(logs);
   }, [user]);
 
+  const persistRef = useRef<(next: Cultivator) => Promise<void>>(async () => {});
+  persistRef.current = async (next: Cultivator) => {
+    setMe(next);
+    await saveCultivator(next);
+  };
+
+  const persist = useCallback(async (next: Cultivator) => {
+    await persistRef.current(next);
+  }, []);
+
   const refreshJianghu = useCallback(async () => {
-    if (!user) return;
+    if (!user || !me) return;
     const others = await loadRoster(user.id);
     const playerNames = [user.name, ...others.map((c) => c.name)];
     const events = generateEvents(15, playerNames);
     setJianghuEvents(events);
-  }, [user]);
-
-  const persist = useCallback(async (next: Cultivator) => {
-    setMe(next);
-    await saveCultivator(next);
-  }, []);
+    const myEffects = collectPlayerEffects(events, user.name);
+    if (myEffects.length > 0) {
+      const totalExp = myEffects.reduce((s, e) => s + e.expDelta, 0);
+      const totalStones = myEffects.reduce((s, e) => s + e.spiritStonesDelta, 0);
+      if (totalExp !== 0 || totalStones !== 0) {
+        const next: Cultivator = {
+          ...me,
+          exp: Math.max(0, me.exp + totalExp),
+          spiritStones: Math.max(0, me.spiritStones + totalStones),
+        };
+        await persist(next);
+      }
+    }
+  }, [user, me, persist]);
 
   useEffect(() => { meRef.current = me; }, [me]);
 
@@ -798,7 +816,9 @@ export function Cultivation({ onExit, user }: CultivationProps) {
         <div className="w-full max-w-md space-y-2 pb-4">
           {jianghuEvents.length === 0 ? (
             <p className="text-sm text-slate-500 mt-8 text-center">暂无江湖消息，刷新看看。</p>
-          ) : jianghuEvents.map((ev) => (
+          ) : jianghuEvents.map((ev) => {
+            const myEffect = ev.effects.find((e) => e.playerName === user?.name);
+            return (
             <div key={ev.id} className="rounded-xl border bg-slate-900 border-slate-700 p-3">
               <div className="flex items-center gap-2 mb-1">
                 <span className={`text-[10px] font-medium ${EVENT_TYPE_COLOR[ev.type]}`}>
@@ -807,10 +827,21 @@ export function Cultivation({ onExit, user }: CultivationProps) {
                 <span className="text-[10px] text-slate-600">
                   {new Date(ev.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
                 </span>
+                {myEffect && (
+                  <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    (myEffect.expDelta > 0 || myEffect.spiritStonesDelta > 0)
+                      ? 'bg-emerald-900/40 text-emerald-300'
+                      : 'bg-red-900/40 text-red-300'
+                  }`}>
+                    {myEffect.expDelta > 0 ? `+${myEffect.expDelta}修为 ` : myEffect.expDelta < 0 ? `${myEffect.expDelta}修为 ` : ''}
+                    {myEffect.spiritStonesDelta > 0 ? `+${myEffect.spiritStonesDelta}灵石` : myEffect.spiritStonesDelta < 0 ? `${myEffect.spiritStonesDelta}灵石` : ''}
+                  </span>
+                )}
               </div>
               <p className="text-sm text-slate-300 leading-relaxed">{ev.text}</p>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
