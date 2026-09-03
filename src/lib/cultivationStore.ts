@@ -136,6 +136,18 @@ export function computeIdleGains(c: Cultivator): IdleGains {
   };
 }
 
+/** Fractional per-second gain rates (building multipliers applied), used to animate live progress while the page stays open. */
+export function liveRatesFor(c: Cultivator): { expPerSecond: number; stonesPerSecond: number } {
+  const level = levelForExp(c.exp);
+  const { expPerHour, stonesPerHour } = idleRatesForLevel(level);
+  const expMultiplier = buildingRateMultiplier(c.buildings['scripture-pavilion'] || 0);
+  const stoneMultiplier = buildingRateMultiplier(c.buildings['spirit-hall'] || 0);
+  return {
+    expPerSecond: (expPerHour * expMultiplier) / 3600,
+    stonesPerSecond: (stonesPerHour * stoneMultiplier) / 3600,
+  };
+}
+
 export function applyIdleGains(c: Cultivator, gains: IdleGains): Cultivator {
   return {
     ...c,

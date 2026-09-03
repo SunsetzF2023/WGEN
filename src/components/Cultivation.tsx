@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { signInWithGitHub } from '../lib/supabase';
 import { TECHNIQUE_MAP, MAX_EQUIPPED, MAX_OWNED_TECHNIQUES, realmForLevel, RARITY_COLOR, MARKET_REFRESH_COST, BUILDINGS, sellValueFor } from '../lib/cultivationData';
 import {
@@ -7,7 +7,7 @@ import {
   computeIdleGains, applyIdleGains, cultivatorLevel, cultivatorRealmName,
   cultivatorStats, expProgress, learnCostFor, upgradeCostFor,
   buyTechnique, sellTechnique, refreshMarket, upgradeTechnique, toggleEquipped,
-  buildingLevel, buildingUpgradeCost, upgradeBuilding,
+  buildingLevel, buildingUpgradeCost, upgradeBuilding, liveRatesFor,
   challengeCultivator, loadMyBattleLogs,
 } from '../lib/cultivationStore';
 import type { LogEntry } from '../lib/cultivationBattle';
@@ -40,6 +40,17 @@ export function Cultivation({ onExit, user }: CultivationProps) {
   const [activeBattle, setActiveBattle] = useState<{ log: LogEntry[]; winnerId: string; winnerName: string; attackerName: string; defenderName: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [popups, setPopups] = useState<{ id: number; text: string; color: string }[]>([]);
+  const [liveOffset, setLiveOffset] = useState({ exp: 0, stones: 0 });
+  const dirtyRef = useRef(false);
+  const meRef = useRef<Cultivator | null>(null);
+  const popupIdRef = useRef(0);
+
+  const popFloatingText = useCallback((text: string, color: string) => {
+    const id = ++popupIdRef.current;
+    setPopups((prev) => [...prev, { id, text, color }]);
+    setTimeout(() => setPopups((prev) => prev.filter((p) => p.id !== id)), 1400);
+  }, []);
 
   // ─── Init ───
   useEffect(() => {
@@ -81,10 +92,65 @@ export function Cultivation({ onExit, user }: CultivationProps) {
     await saveCultivator(next);
   }, []);
 
-  const level = me ? cultivatorLevel(me) : 1;
-  const realmName = me ? cultivatorRealmName(me) : '';
-  const stats = me ? cultivatorStats(me) : null;
-  const progress = me ? expProgress(me) : null;
+  useEffect(() => { meRef.current = me; }, [me]);
+
+  // ─── Live per-second ticking while the page stays open. `liveOffset` is the fractional
+  // amount accrued since the last whole-unit crossing — it updates every tick so the
+  // progress bar visibly creeps forward continuously; whole units fold into the real
+  // integer `me` state (what actually gets saved) and trigger a floating "+N" popup. ───
+  useEffect(() => {
+    if (!me) return;
+    const tick = setInterval(() => {
+      const base = meRef.current;
+      if (!base) return;
+      const { expPerSecond, stonesPerSecond } = liveRatesFor(base);
+      setLiveOffset((prev) => {
+        const nextExp = prev.exp + expPerSecond;
+        const nextStones = prev.stones + stonesPerSecond;
+        const wholeExp = Math.floor(nextExp);
+        const wholeStones = Math.floor(nextStones);
+        if (wholeExp > 0 || wholeStones > 0) {
+          dirtyRef.current = true;
+          setMe((prevMe) => prevMe ? {
+            ...prevMe,
+            exp: prevMe.exp + wholeExp,
+            spiritStones: prevMe.spiritStones + wholeStones,
+            lastCollectedAt: new Date().toISOString(),
+          } : prevMe);
+          if (wholeExp > 0) popFloatingText(`+${wholeExp} 修为`, 'text-amber-400');
+          if (wholeStones > 0) popFloatingText(`+${wholeStones} 灵石`, 'text-emerald-400');
+        }
+        return { exp: nextExp - wholeExp, stones: nextStones - wholeStones };
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+    // Intentionally keyed on ownerId only (via meRef for the latest snapshot) so the
+    // interval isn't torn down/recreated on every tick's own state update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.ownerId, popFloatingText]);
+
+  // ─── Throttled autosave for the live ticker (avoids a write every second) ───
+  useEffect(() => {
+    const flush = setInterval(() => {
+      if (dirtyRef.current && meRef.current) {
+        dirtyRef.current = false;
+        saveCultivator(meRef.current);
+      }
+    }, 10000);
+    return () => {
+      clearInterval(flush);
+      if (dirtyRef.current && meRef.current) saveCultivator(meRef.current);
+    };
+  }, []);
+
+  // Display-only cultivator with the fractional live offset layered on top, purely for
+  // smooth visual progress; all spending/affordance checks below use the real `me`.
+  const displayMe = me ? { ...me, exp: me.exp + liveOffset.exp, spiritStones: me.spiritStones + liveOffset.stones } : null;
+  const level = displayMe ? cultivatorLevel(displayMe) : 1;
+  const realmName = displayMe ? cultivatorRealmName(displayMe) : '';
+  const stats = displayMe ? cultivatorStats(displayMe) : null;
+  const progress = displayMe ? expProgress(displayMe) : null;
+  const displaySpiritStones = displayMe ? Math.floor(displayMe.spiritStones) : 0;
 
   // ─── Actions ───
   const handleBuy = (id: string) => {
@@ -215,19 +281,28 @@ export function Cultivation({ onExit, user }: CultivationProps) {
               <div className="text-lg font-bold text-slate-100">{me.name}</div>
               <div className="text-xs text-amber-400">{realmName} · Lv.{level}</div>
             </div>
-            <div className="text-right text-sm text-slate-300">
-              💎 灵石 <span className="font-bold text-slate-100">{me.spiritStones}</span>
+            <div className="relative text-right text-sm text-slate-300">
+              💎 灵石 <span className="font-bold text-slate-100">{displaySpiritStones}</span>
+              {popups.filter((p) => p.color === 'text-emerald-400').map((p) => (
+                <span key={p.id} className={`cultivation-float-popup ${p.color}`} style={{ right: 0, left: 'auto' }}>{p.text}</span>
+              ))}
             </div>
           </div>
 
-          <div className="mb-3">
+          <div className="relative mb-3">
             <div className="flex justify-between text-[11px] text-slate-500 mb-1">
               <span>修为</span>
-              <span>{progress.current} / {progress.needed}</span>
+              <span>{Math.floor(progress.current)} / {progress.needed}</span>
             </div>
             <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500" style={{ width: `${progress.pct}%` }} />
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-[width] duration-1000 ease-linear"
+                style={{ width: `${progress.pct}%` }}
+              />
             </div>
+            {popups.filter((p) => p.color === 'text-amber-400').map((p) => (
+              <span key={p.id} className={`cultivation-float-popup ${p.color}`} style={{ left: '20%' }}>{p.text}</span>
+            ))}
           </div>
 
           <div className="grid grid-cols-4 gap-2 text-center text-xs">

@@ -79,3 +79,29 @@ body {
   color: #a5b4fc;
   border-bottom-style: solid;
 }
+
+/* Cultivation: floating "+N" gain popups */
+@keyframes cultivation-float-up {
+  0% { opacity: 0; transform: translate(-50%, 4px) scale(0.9); }
+  15% { opacity: 1; transform: translate(-50%, -2px) scale(1.05); }
+  75% { opacity: 1; transform: translate(-50%, -22px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -34px) scale(1); }
+}
+.cultivation-float-popup {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  pointer-events: none;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+  animation: cultivation-float-up 1.4s ease-out forwards;
+}
+@keyframes cultivation-pulse {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+.cultivation-pulse {
+  animation: cultivation-pulse 0.4s ease-out;
+}
