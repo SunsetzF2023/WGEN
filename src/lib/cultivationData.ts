@@ -198,8 +198,10 @@ const RAW_TECHNIQUES: Technique[] = [
 ];
 
 // Prices are scaled up from the raw table so they stay balanced against the
-// boosted idle production rates below (see idleRatesForLevel).
-const PRICE_MULTIPLIER = 2;
+// boosted idle production rates below (see idleRatesForLevel). Kept in lockstep
+// with the 8x income boost so affordability pace is unchanged — only the raw
+// numbers (income AND price tags) read bigger.
+const PRICE_MULTIPLIER = 16;
 
 export const TECHNIQUES: Technique[] = RAW_TECHNIQUES.map((t) => ({
   ...t,
@@ -327,7 +329,10 @@ const EXP_TIER_STEP = 0.25;
 /** Total lifetime exp required to reach a given level (level 1 = 0 exp). */
 export function expForLevel(level: number): number {
   if (level <= 1) return 0;
-  const base = 100 * Math.pow(level - 1, 1.5);
+  // Base scaled 8x alongside idleRatesForLevel's 8x income boost, so the actual
+  // time-to-level-up pace is unchanged — only the raw numbers ticking by (bar totals,
+  // "+N exp" popups) read much bigger and more satisfying.
+  const base = 800 * Math.pow(level - 1, 1.5);
   const tierMultiplier = 1 + EXP_TIER_STEP * realmTierIndex(level);
   return Math.floor(base * tierMultiplier);
 }
@@ -335,7 +340,7 @@ export function expForLevel(level: number): number {
 /** Derive current level from total accumulated exp. */
 export function levelForExp(exp: number): number {
   if (exp <= 0) return 1;
-  let level = Math.max(1, Math.floor(1 + Math.pow(exp / 100, 2 / 3)));
+  let level = Math.max(1, Math.floor(1 + Math.pow(exp / 800, 2 / 3)));
   while (expForLevel(level + 1) <= exp) level++;
   while (level > 1 && expForLevel(level) > exp) level--;
   return level;
@@ -388,7 +393,7 @@ export const MAX_OFFLINE_HOURS = 24;
 // ─── 坊市 (Market) ───
 
 export const MARKET_SLOT_COUNT = 6;
-export const MARKET_REFRESH_COST = 60;
+export const MARKET_REFRESH_COST = 480;
 
 /** Highest rarity currently obtainable in the 坊市 for this level (i.e. this realm's "best available" tier). */
 export function topUnlockedRarity(level: number): Rarity | null {
@@ -438,9 +443,9 @@ export interface BuildingDef {
 }
 
 export const BUILDINGS: BuildingDef[] = [
-  { id: 'spirit-hall', name: '采灵殿', description: '离线灵石获取速率 +1%/级', baseCost: 80, costGrowth: 1.15 },
-  { id: 'scripture-pavilion', name: '藏经阁', description: '离线修为获取速率 +1%/级', baseCost: 80, costGrowth: 1.15 },
-  { id: 'sky-workshop', name: '天工阁', description: '坊市刷出「当前境界最高品质功法」的概率提升', baseCost: 120, costGrowth: 1.18 },
+  { id: 'spirit-hall', name: '采灵殿', description: '离线灵石获取速率 +1%/级', baseCost: 640, costGrowth: 1.15 },
+  { id: 'scripture-pavilion', name: '藏经阁', description: '离线修为获取速率 +1%/级', baseCost: 640, costGrowth: 1.15 },
+  { id: 'sky-workshop', name: '天工阁', description: '坊市刷出「当前境界最高品质功法」的概率提升', baseCost: 960, costGrowth: 1.18 },
 ];
 
 export const BUILDING_MAP: Record<BuildingId, BuildingDef> = Object.fromEntries(
