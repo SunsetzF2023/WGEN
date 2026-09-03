@@ -378,8 +378,8 @@ const IDLE_TIER_STEP = 0.35;
 export function idleRatesForLevel(level: number): { expPerHour: number; stonesPerHour: number } {
   const tierBoost = 1 + IDLE_TIER_STEP * realmTierIndex(level);
   return {
-    expPerHour: Math.round((60 + level * 14) * tierBoost),
-    stonesPerHour: Math.round((30 + level * 7) * tierBoost),
+    expPerHour: Math.round((480 + level * 110) * tierBoost),
+    stonesPerHour: Math.round((240 + level * 55) * tierBoost),
   };
 }
 
